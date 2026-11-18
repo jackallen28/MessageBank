@@ -12,7 +12,7 @@ address, and the box shows it on an e-paper screen with a spinning LED ring and 
 | **Waiting** | Blank (the panel sleeps) | Off (or a `!led` glow) | |
 | **New message** | Pixel envelope with a heart; the badge shows how many are new | Spins in circles: style, colours and speed are settings | tick tick tick tick tick **TICK**, each tick longer and stronger |
 | **Press the knob** | The oldest new message. **Clockwise scrolls down, anticlockwise up.** | Soft glow | A tick for every click; a double bump at the top or bottom |
-| **Press again** | "Keep this message?" **Anticlockwise = DELETE, clockwise = SAVE** | Pulses red (delete) or green (save) | Tick |
+| **Press again** | "Keep this message?" **Anticlockwise = DELETE, clockwise = SAVE** | Pulses red (delete) or blue (keep) | Tick |
 | **Press to confirm** | The next new message | | Saved: soft double beat. Deleted: one thud. |
 | **All read** | Happy envelope, then blank | Rainbow, then goes out LED by LED | A fading brrr-rr-r, like powering down |
 

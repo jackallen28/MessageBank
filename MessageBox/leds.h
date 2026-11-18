@@ -28,7 +28,7 @@ RingLook ringLook;
 uint32_t ringStart = 0;
 // overlays
 float holdFill = -1;          // 0..1 while the knob is held down (setup in 5 s), <0 = none
-int8_t choiceGlow = 0;        // -1 delete (ring pulses red), +1 save (green), 0 none
+int8_t choiceGlow = 0;        // -1 delete (ring pulses red), +1 keep/save (blue), 0 none
 uint32_t overrideUntil = 0;   // a web-page test owns the ring until then
 RingMode savedMode;
 uint32_t savedColor;
@@ -173,10 +173,10 @@ void ledsLoop() {
       break;
     }
   }
-  // the decision: pulsing red for delete, green for save
+  // the decision: pulsing red for delete, blue for keep (save)
   if (choiceGlow) {
     ring.clear();
-    uint32_t c = choiceGlow < 0 ? 0xFF1010 : 0x10FF30;
+    uint32_t c = choiceGlow < 0 ? 0xFF1010 : 0x1040FF;
     float k = 0.55f + 0.45f * sinf(millis() / 160.0f);
     for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, mix(c, k));
   }
