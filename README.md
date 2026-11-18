@@ -1,11 +1,52 @@
 # MessageBox
 
 A small box for messages from a friend or partner. They send an email to a private Gmail
-address. The box reads it, shows it on the e-paper, lights the LED ring and buzzes. Turn the
-knob to look back through older messages, and press it to mark a message as read.
+address, and the box shows it on an e-paper screen with a spinning LED ring and a haptic buzz.
 
-This is the **test firmware**: it gets every part working and sets up Wi-Fi and Gmail from your
-phone.
+![The e-paper screens](screens.png)
+
+## How it behaves
+
+| | Screen | LED ring | Vibration |
+|---|---|---|---|
+| **Waiting** | Blank (the panel sleeps) | Off (or a `!led` glow) | |
+| **New message** | Pixel envelope with a heart; the badge shows how many are new | Spins in circles: style, colours and speed are settings | tick tick tick tick tick **TICK**, each tick longer and stronger |
+| **Press the knob** | The oldest new message. **Clockwise scrolls down, anticlockwise up.** | Soft glow | A tick for every click; a double bump at the top or bottom |
+| **Press again** | "Keep this message?" **Anticlockwise = DELETE, clockwise = SAVE** | Pulses red (delete) or green (save) | Tick |
+| **Press to confirm** | The next new message | | Saved: soft double beat. Deleted: one thud. |
+| **All read** | Happy envelope, then blank | Rainbow, then goes out LED by LED | A fading brrr-rr-r, like powering down |
+
+- **Saved messages:** press the knob while the screen is blank (with nothing new) to look
+  through them, keeping or deleting each one the same way.
+- **Walking away:** if the knob isn't touched for 3 minutes while reading, the box goes back to
+  the envelope, or powers down if nothing new is left.
+- **Setup:** hold the knob for **5 s** (the ring fills up) to open the setup Wi-Fi.
+- **Knob haptics:** every click and press gives a small tick. You can set its strength and
+  length, or turn it off.
+- **Storage:** messages are kept in the C3's flash (up to 40), so new and saved ones survive a
+  power cut.
+
+### Screen speed
+
+The panel takes about **0.35 s** for a fast (partial) refresh and about **1 s** for a full one.
+The firmware is built around that:
+
+- **Drawing in the background:** drawing runs in its own task, so the LED ring, haptics and
+  knob stay smooth while the panel updates.
+- **Skipping frames:** if you turn the knob faster than the panel can keep up, the box skips
+  straight to where you stopped instead of drawing every step.
+- **Sending the picture:** the whole picture is kept in RAM and sent at 10 MHz SPI (about
+  10 ms).
+- **Fast refresh for every change:** scrolling, choosing keep or delete, and badge updates all
+  use the fast refresh.
+- **Full refreshes only at clean moments:** they clear the faint "ghosting" a partial refresh
+  leaves. They happen when waking from blank, when going blank, and after *Clean refresh after
+  this many fast ones* (default 10). Even then, they only happen when a new message opens,
+  never in the middle of scrolling.
+- **Saving power:** the panel's high voltage switches off 2 s after the last change, and the
+  panel sleeps when blank.
+
+If long jumper wires give a garbled picture, lower `EPD_SPI_HZ` in `config.h` to 4000000.
 
 ## Parts
 
@@ -13,9 +54,9 @@ phone.
 |---|---|
 | ESP32-C3 SuperMini | The brains: Wi-Fi, web page, Gmail |
 | WeAct 3.7" e-paper, black/white, 240 × 416 (GDEY037T03) | Shows the message. Keeps the picture with no power. |
-| WS2812B 12-LED ring | Glows (breathes) while a message is unread |
-| EC11 / KY-040 rotary encoder with push button | Turn to browse, press to say "read", hold 5 s for setup |
-| PWM coin vibration motor module (GND, VCC, IN) | Buzzes when a message arrives |
+| WS2812B 12-LED ring | Spins in circles while there are new messages |
+| EC11 / KY-040 rotary encoder with push button | Scroll, choose keep or delete, confirm; hold 5 s for setup |
+| PWM coin vibration motor module (GND, VCC, IN) | Haptic ticks for the knob, and the new-message buzz |
 | 330 Ω resistor, 470 µF capacitor (6.3 V or more) | Protect the LED ring |
 
 ## Wiring
@@ -75,29 +116,30 @@ Things to know:
    page.
 
 The sketch compiles with esp32 3.0.7, GxEPD2 1.6, Adafruit GFX 1.13 and NeoPixel 1.15: it uses
-1.2 MB of flash and 53 KB of RAM.
+1.3 MB of flash and 53 KB of RAM.
 
 ## Test it (setup Wi-Fi)
 
 On first start no Wi-Fi is saved, so the box opens its own:
 
 1. The e-paper shows the setup steps and the ring turns blue.
-2. On your phone, join the Wi-Fi network **MessageBox-Setup** (password **messagebox**). The page
-   usually pops up by itself. If it doesn't, open **http://192.168.4.1**.
+2. On your phone, join **MessageBox-Setup** (password **messagebox**). The page usually pops up
+   by itself. If it doesn't, open **http://192.168.4.1**.
 3. Under **Test the hardware**, check each part:
-   - [ ] **LED ring:** *Test each LED* lights each LED red, then green, then blue, in order. A
-         missing colour means a bad LED or joint. *Breathe* is what an unread message looks like.
-   - [ ] **Vibration:** *Short*, *Long*, *Heartbeat*. *Ramp* goes from soft to strong, which
-         shows the PWM strength control works.
-   - [ ] **E-paper:** *Test pattern* fills the screen with a frame, crossed lines and bars. All
-         four edges should show. *Show text* draws your own text.
-   - [ ] **Encoder:** turn the knob and watch **Position** and the dial move: one step per
-         click, up for clockwise. If it counts the wrong way, swap the CLK and DT wires. Press
-         it and the dot lights and the press count goes up.
-   - [ ] **Pretend message:** shows a fake message on the screen with the breathing ring and
-         buzz. Press the knob, and the ring goes off ("read").
-
-You can do all of this before Wi-Fi or Gmail are set up.
+   - [ ] **Encoder:** turn the knob and watch the dial move one step per click, clockwise
+         counting up. If it runs backwards, tick *Reverse the knob*. Each click should give a
+         small haptic tick.
+   - [ ] **LED ring:** *Test each LED* lights each LED red, then green, then blue, in order.
+   - [ ] **E-paper:** *Test pattern* shows a frame with all four edges, crossed lines and bars.
+         *Envelope*, *Keep or delete* and *Happy envelope* show those screens.
+   - [ ] **The whole flow:** *Send to the box* makes a pretend message:
+     - The ring spins, the motor goes tick ... TICK, and the envelope shows "1".
+     - Press: the message opens. Turn to scroll.
+     - Press: "Keep this message?". Turn left or right, then press to confirm.
+     - The happy envelope shows, then the box powers down.
+4. Tune the **Lights** and **Haptics** with their *Try* buttons. They play the values in the
+   boxes without saving, so you can adjust them until you like them, then press **Save
+   settings**. Light, haptic and screen settings apply straight away, with no restart.
 
 ## Set up Gmail
 
@@ -115,10 +157,10 @@ the box shows.
      friend's and yours. Leave it empty to show everything (spam included).
    - **Time zone:** the default is Sydney/Melbourne (`AEST-10AEDT,M10.1.0,M4.1.0/3`).
      Brisbane is `AEST-10`, Adelaide `ACST-9:30ACDT,M10.1.0,M4.1.0/3`, Perth `AWST-8`.
-4. Press **Save settings and restart**. The box joins your Wi-Fi and the setup Wi-Fi closes. The
-   screen shows its address, for example `192.168.1.42 - messagebox.local`. The same page is
-   now at **http://messagebox.local** (or the IP) from any phone or computer on your home
-   Wi-Fi.
+4. Press **Save settings**. The box restarts and joins your Wi-Fi. The setup Wi-Fi closes and
+   the screen goes blank (waiting). The same page is now at **http://messagebox.local** from any
+   phone or computer on your home Wi-Fi. If `.local` doesn't open, use the IP address shown in
+   your router's device list or the Serial Monitor.
 5. Send an email to the box's address. Within a minute (*Check every*, default 60 s) the box
    buzzes and shows it. You can also press **Check mail now**. The **Status** and **Log**
    boxes show what happened, for example `Login refused` if the app password is wrong.
@@ -130,43 +172,41 @@ example to change networks.
 
 ## Sending messages
 
-- **The subject** is the title and **the text** is the message. Short notes get a big font, and
-  long ones get smaller so they fit. Quoted replies ("On ... wrote:"), signatures and "Sent from
-  my iPhone" are left out. Emoji can't be drawn: hearts become `<3`, smileys `:)`, and the rest
-  are dropped.
+- **The subject** is the title and **the text** is the message. Short notes get a big font,
+  and long ones scroll.
+- **Left out:** quoted replies ("On ... wrote:"), signatures and "Sent from my iPhone".
+- **Emoji** can't be drawn: hearts become `<3`, smileys `:)`, and the rest are dropped.
 - **A subject that starts with `!`** is an instruction instead of a message:
 
   | Subject | Does |
   |---|---|
-  | `!led pink` (or red, green, blue, purple, orange, yellow, white, `#rrggbb`, off) | Sets the ring colour |
-  | `!rainbow` | Rainbow ring |
-  | `!buzz 3` | Heartbeat buzz, 3 times |
-  | `!ping` | Green spin and a short buzz (a "thinking of you") |
-  | `!clear` | Clears the messages and the screen |
+  | `!led pink` (or red, green, blue, purple, orange, yellow, white, `#rrggbb`, off) | A soft glow while waiting |
+  | `!rainbow` | Rainbow while waiting |
+  | `!buzz 3` | The new-message buzz, 3 times |
+  | `!ping` | The ring spins for 4 s with a tap: "thinking of you" |
+  | `!clear` | Deletes every message on the box |
 
-- After reading a mail, the box marks it read in Gmail. Each check takes at most 5 mails, oldest
-  first.
-
-## On the device
-
-| Do | Result |
-|---|---|
-| Turn the knob | Older or newer messages (the screen redraws when you stop turning) |
-| Press | Marks the message read (ring off), or jumps back to the newest |
-| Hold 5 s | Opens the setup Wi-Fi and shows the steps on the screen |
-
-The newest message is saved, so it's still there after a power cut.
+- **In Gmail:** after reading a mail, the box marks it read there. Each check takes at most 5
+  mails, oldest first.
+- **The web page** lists the messages on the box, and you can delete them there too.
 
 ## Files
 
-- `MessageBox/MessageBox.ino`: the firmware (pins and settings at the top)
+- `MessageBox/MessageBox.ino`: what the box does (the reading flow), Gmail checks, Wi-Fi, the web
+  page's handlers
+- `MessageBox/config.h`: pins and every setting with its default
+- `MessageBox/screen.h`: the e-paper: the drawing task, text layout, envelopes, refresh strategy
+- `MessageBox/leds.h`: LED ring animations
+- `MessageBox/haptics.h`: knob ticks, the notification buzz, the power-down buzz
+- `MessageBox/store.h`: messages kept in flash
 - `MessageBox/imap.h`: the Gmail (IMAP over TLS) client and the mail text decoding
 - `MessageBox/web_page.h`: the setup and test page
 - `MessageBox/certs.h`: Google's root certificates, so the box checks it's really talking to Gmail
 - `wiring.svg`: the wiring diagram (made by `tools/make_wiring.py`)
+- `screens.png`: the screens, drawn on a PC with the firmware's own drawing code
+  (`tools/preview_screens.cpp`, `tools/make_previews.py`)
 
 ## Next steps
 
 - Send messages back, for example with a knob press, using Gmail SMTP and the same app password.
-- Partial e-paper refresh for the clock and status line.
 - A case: the ring behind a diffuser around the screen.
