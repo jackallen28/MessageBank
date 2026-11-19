@@ -5,10 +5,14 @@
 
 // ---------------------------------------------------------------- pins
 
-const int PIN_EPD_SCK = 4, PIN_EPD_MOSI = 6, PIN_EPD_CS = 7, PIN_EPD_DC = 5, PIN_EPD_RST = 10, PIN_EPD_BUSY = 3;
+// The middle two pins on each side of the SuperMini (GPIO4, GPIO3 and GPIO8, GPIO9) are kept free,
+// so a zip tie can go round the middle of the board.
+const int PIN_EPD_SCK = 10, PIN_EPD_MOSI = 6, PIN_EPD_CS = 7, PIN_EPD_DC = 5;
+const int PIN_EPD_RST = -1;   // RES is tied to 3V3 on the module (no wire to the C3)
+const int PIN_EPD_BUSY = -1;  // BUSY not connected: the driver waits the panel's fixed refresh time
 const int PIN_ENC_A = 0;      // CLK / S1
 const int PIN_ENC_B = 1;      // DT  / S2
-const int PIN_ENC_SW = 9;     // KEY (same pin as the board's BOOT button)
+const int PIN_ENC_SW = 21;    // KEY (the C3's TX pin: it chatters at boot, so don't hold the knob while plugging in)
 const int PIN_LEDS = 2;       // ring DIN
 const int PIN_VIBE = 20;      // motor module IN
 const int PIN_BOARD_LED = 8;  // blue LED on the SuperMini, on when LOW

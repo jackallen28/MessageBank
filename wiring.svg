@@ -1,29 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1010" width="1400" height="1010" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1034" width="1400" height="1034" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
 <style>
 svg{--bg:#ffffff;--ink:#1d1b1a;--mute:#6f6a66;--gnd:#343a40;--halo:#ffffff;--pad:#f1f3f5;--padline:#495057;--part:#f1f3f5;--paper:#e9ecef;--res:#e9d8a6}
 @media (prefers-color-scheme: dark){svg{--bg:#18181b;--ink:#f1ece8;--mute:#a1a1aa;--gnd:#adb5bd;--halo:#18181b;--pad:#27272a;--padline:#d4d4d8;--part:#27272a;--paper:#3f3f46;--res:#a68a4d}}
 </style>
-<rect width="1400" height="1010" fill="var(--bg)"/>
-<path d="M560,484 L450,484 L450,190 L1000,190" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M560,484 L450,484 L450,190 L1000,190" fill="none" stroke="#7048e8" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M560,438 L470,438 L470,230 L1000,230" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M560,438 L470,438 L470,230 L1000,230" fill="none" stroke="#1c7ed6" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,300 L800,300 L800,270 L1000,270" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,300 L800,300 L800,270 L1000,270" fill="none" stroke="#0ca678" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,346 L830,346 L830,310 L1000,310" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,346 L830,346 L830,310 L1000,310" fill="none" stroke="#e64980" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,392 L860,392 L860,350 L1000,350" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,392 L860,392 L860,350 L1000,350" fill="none" stroke="#d9480f" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,530 L890,530 L890,390 L1000,390" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,530 L890,530 L890,390 L1000,390" fill="none" stroke="#5c940d" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<rect width="1400" height="1034" fill="var(--bg)"/>
+<path d="M760,300 L800,300 L800,230 L1000,230" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,300 L800,300 L800,230 L1000,230" fill="none" stroke="#0ca678" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,346 L830,346 L830,270 L1000,270" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,346 L830,346 L830,270 L1000,270" fill="none" stroke="#e64980" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,392 L860,392 L860,310 L1000,310" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,392 L860,392 L860,310 L1000,310" fill="none" stroke="#d9480f" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,530 L890,530 L890,350 L1000,350" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,530 L890,530 L890,350 L1000,350" fill="none" stroke="#1c7ed6" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M560,530 L390,530 L390,310 L360,310" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M560,530 L390,530 L390,310 L360,310" fill="none" stroke="#1098ad" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M560,622 L470,622 L470,720 L360,720" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M560,622 L470,622 L470,720 L360,720" fill="none" stroke="#ae3ec9" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M560,576 L490,576 L490,750 L360,750" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M560,576 L490,576 L490,750 L360,750" fill="none" stroke="#f59f00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,484 L785,484 L785,780 L360,780" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760,484 L785,484 L785,780 L360,780" fill="none" stroke="#868e96" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,622 L785,622 L785,780 L360,780" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760,622 L785,622 L785,780 L360,780" fill="none" stroke="#868e96" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M760,576 L820,576 L820,700 L1000,700" fill="none" stroke="var(--halo)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
 <path d="M760,576 L820,576 L820,700 L1000,700" fill="none" stroke="#c2255c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 <rect x="380" y="392.0" width="20" height="56" rx="4" fill="var(--res)" stroke="var(--ink)" stroke-width="1.5"/>
@@ -35,7 +31,7 @@ svg{--bg:#ffffff;--ink:#1d1b1a;--mute:#6f6a66;--gnd:#343a40;--halo:#ffffff;--pad
 <rect x="626.0" y="246" width="68" height="34" rx="8" fill="#adb5bd" stroke="#495057" stroke-width="2"/>
 <text x="660.0" y="268" font-size="11" text-anchor="middle" font-weight="bold" fill="#343a40" >USB-C</text>
 <text x="660.0" y="686" font-size="15" text-anchor="middle" font-weight="bold" fill="var(--ink)" >ESP32-C3 SuperMini (top view)</text>
-<text x="660.0" y="706" font-size="12" text-anchor="middle" font-weight="normal" fill="var(--mute)" >BOOT button = GPIO9, blue LED = GPIO8</text>
+<text x="660.0" y="706" font-size="12" text-anchor="middle" font-weight="normal" fill="var(--mute)" >middle pins free for the zip tie</text>
 <circle cx="574" cy="300" r="8" fill="#c9a227" stroke="#8a6d00" stroke-width="2"/>
 <circle cx="574" cy="300" r="3" fill="#1f1f24"/>
 <text x="588" y="305" font-size="13" text-anchor="start" font-weight="bold" fill="#fff" >5V</text>
@@ -109,8 +105,12 @@ svg{--bg:#ffffff;--ink:#1d1b1a;--mute:#6f6a66;--gnd:#343a40;--halo:#ffffff;--pad
 <line x1="560" y1="392" x2="536" y2="392" stroke="#f08c00" stroke-width="4"/>
 <rect x="486" y="380" width="50" height="24" rx="12" fill="#f08c00"/>
 <text x="511.0" y="397" font-size="13" text-anchor="middle" font-weight="bold" fill="#fff" >3V3</text>
-<text x="768" y="443" font-size="12" text-anchor="start" font-weight="normal" fill="var(--mute)" >(not wired)</text>
-<text x="794" y="627" font-size="12" text-anchor="start" font-weight="normal" fill="var(--mute)" >free</text>
+<rect x="546" y="457.0" width="228" height="8" rx="3" fill="#e9ecef" stroke="#868e96" stroke-width="1"/>
+<text x="552" y="443" font-size="12" text-anchor="end" font-weight="normal" fill="var(--mute)" >keep free</text>
+<text x="768" y="443" font-size="12" text-anchor="start" font-weight="normal" fill="var(--mute)" >keep free</text>
+<text x="552" y="489" font-size="12" text-anchor="end" font-weight="normal" fill="var(--mute)" >keep free</text>
+<text x="768" y="489" font-size="12" text-anchor="start" font-weight="normal" fill="var(--mute)" >keep free</text>
+<text x="780" y="466.0" font-size="12" text-anchor="start" font-weight="bold" fill="#868e96" >← zip tie</text>
 <rect x="1010" y="150" width="340" height="360" rx="10" fill="var(--part)" stroke="var(--ink)" stroke-width="2"/>
 <rect x="1090" y="168" width="242" height="324" rx="4" fill="var(--paper)" stroke="var(--mute)"/>
 <text x="1211" y="300" font-size="20" text-anchor="middle" font-weight="bold" fill="var(--ink)" >WeAct 3.7"</text>
@@ -122,16 +122,16 @@ svg{--bg:#ffffff;--ink:#1d1b1a;--mute:#6f6a66;--gnd:#343a40;--halo:#ffffff;--pad
 <text x="1020" y="195" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >BUSY</text>
 <line x1="1000" y1="230" x2="1010" y2="230" stroke="var(--ink)" stroke-width="3"/>
 <circle cx="1000" cy="230" r="5" fill="var(--pad)" stroke="var(--padline)" stroke-width="2"/>
-<text x="1020" y="235" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >SCL</text>
+<text x="1020" y="235" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >D/C</text>
 <line x1="1000" y1="270" x2="1010" y2="270" stroke="var(--ink)" stroke-width="3"/>
 <circle cx="1000" cy="270" r="5" fill="var(--pad)" stroke="var(--padline)" stroke-width="2"/>
-<text x="1020" y="275" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >D/C</text>
+<text x="1020" y="275" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >SDA</text>
 <line x1="1000" y1="310" x2="1010" y2="310" stroke="var(--ink)" stroke-width="3"/>
 <circle cx="1000" cy="310" r="5" fill="var(--pad)" stroke="var(--padline)" stroke-width="2"/>
-<text x="1020" y="315" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >SDA</text>
+<text x="1020" y="315" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >CS</text>
 <line x1="1000" y1="350" x2="1010" y2="350" stroke="var(--ink)" stroke-width="3"/>
 <circle cx="1000" cy="350" r="5" fill="var(--pad)" stroke="var(--padline)" stroke-width="2"/>
-<text x="1020" y="355" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >CS</text>
+<text x="1020" y="355" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >SCL</text>
 <line x1="1000" y1="390" x2="1010" y2="390" stroke="var(--ink)" stroke-width="3"/>
 <circle cx="1000" cy="390" r="5" fill="var(--pad)" stroke="var(--padline)" stroke-width="2"/>
 <text x="1020" y="395" font-size="13" text-anchor="start" font-weight="bold" fill="var(--ink)" >RES</text>
@@ -144,6 +144,10 @@ svg{--bg:#ffffff;--ink:#1d1b1a;--mute:#6f6a66;--gnd:#343a40;--halo:#ffffff;--pad
 <line x1="1000" y1="430" x2="976" y2="430" stroke="var(--gnd)" stroke-width="4"/>
 <rect x="930" y="418" width="46" height="24" rx="12" fill="var(--gnd)"/>
 <text x="953.0" y="435" font-size="13" text-anchor="middle" font-weight="bold" fill="#fff" >GND</text>
+<line x1="1000" y1="390" x2="976" y2="390" stroke="#f08c00" stroke-width="4"/>
+<rect x="926" y="378" width="50" height="24" rx="12" fill="#f08c00"/>
+<text x="951.0" y="395" font-size="13" text-anchor="middle" font-weight="bold" fill="#fff" >3V3</text>
+<text x="990" y="195" font-size="12" text-anchor="end" font-weight="normal" fill="var(--mute)" >not connected</text>
 <line x1="1000" y1="470" x2="976" y2="470" stroke="#f08c00" stroke-width="4"/>
 <rect x="926" y="458" width="50" height="24" rx="12" fill="#f08c00"/>
 <text x="951.0" y="475" font-size="13" text-anchor="middle" font-weight="bold" fill="#fff" >3V3</text>
@@ -238,26 +242,22 @@ svg{--bg:#ffffff;--ink:#1d1b1a;--mute:#6f6a66;--gnd:#343a40;--halo:#ffffff;--pad
 <line x1="1000" y1="760" x2="976" y2="760" stroke="var(--gnd)" stroke-width="4"/>
 <rect x="930" y="748" width="46" height="24" rx="12" fill="var(--gnd)"/>
 <text x="953.0" y="765" font-size="13" text-anchor="middle" font-weight="bold" fill="#fff" >GND</text>
-<rect x="609" y="169" width="96.80000000000001" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
-<text x="613" y="183" font-size="12" text-anchor="start" font-weight="bold" fill="#7048e8" >GPIO3 → BUSY</text>
-<rect x="609" y="209" width="178.20000000000002" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
-<text x="613" y="223" font-size="12" text-anchor="start" font-weight="bold" fill="#1c7ed6" >GPIO4 → SCL (SPI clock)</text>
+<rect x="901" y="209" width="89.4" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
+<text x="905" y="223" font-size="12" text-anchor="start" font-weight="bold" fill="#0ca678" >GPIO5 → D/C</text>
 <rect x="901" y="249" width="89.4" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
-<text x="905" y="263" font-size="12" text-anchor="start" font-weight="bold" fill="#0ca678" >GPIO5 → D/C</text>
-<rect x="901" y="289" width="89.4" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
-<text x="905" y="303" font-size="12" text-anchor="start" font-weight="bold" fill="#e64980" >GPIO6 → SDA</text>
-<rect x="901" y="329" width="82.0" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
-<text x="905" y="343" font-size="12" text-anchor="start" font-weight="bold" fill="#d9480f" >GPIO7 → CS</text>
-<rect x="901" y="369" width="96.80000000000001" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
-<text x="905" y="383" font-size="12" text-anchor="start" font-weight="bold" fill="#5c940d" >GPIO10 → RES</text>
+<text x="905" y="263" font-size="12" text-anchor="start" font-weight="bold" fill="#e64980" >GPIO6 → SDA</text>
+<rect x="901" y="289" width="82.0" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
+<text x="905" y="303" font-size="12" text-anchor="start" font-weight="bold" fill="#d9480f" >GPIO7 → CS</text>
+<rect x="901" y="329" width="96.80000000000001" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
+<text x="905" y="343" font-size="12" text-anchor="start" font-weight="bold" fill="#1c7ed6" >GPIO10 → SCL</text>
 <rect x="395" y="536" width="82.0" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
 <text x="399" y="550" font-size="12" text-anchor="start" font-weight="bold" fill="#1098ad" >GPIO2 → IN</text>
 <rect x="369" y="724" width="82.0" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
 <text x="373" y="738" font-size="12" text-anchor="start" font-weight="bold" fill="#ae3ec9" >GPIO0 → S1</text>
 <rect x="497" y="729" width="82.0" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
 <text x="501" y="743" font-size="12" text-anchor="start" font-weight="bold" fill="#f59f00" >GPIO1 → S2</text>
-<rect x="557" y="759" width="89.4" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
-<text x="561" y="773" font-size="12" text-anchor="start" font-weight="bold" fill="#868e96" >GPIO9 → KEY</text>
+<rect x="557" y="759" width="96.80000000000001" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
+<text x="561" y="773" font-size="12" text-anchor="start" font-weight="bold" fill="#868e96" >GPIO21 → KEY</text>
 <rect x="827" y="679" width="89.4" height="19" rx="4" fill="var(--bg)" opacity=".92"/>
 <text x="831" y="693" font-size="12" text-anchor="start" font-weight="bold" fill="#c2255c" >GPIO20 → IN</text>
 <text x="40" y="52" font-size="28" text-anchor="start" font-weight="bold" fill="var(--ink)" >MessageBox wiring</text>
@@ -283,5 +283,6 @@ svg{--bg:#ffffff;--ink:#1d1b1a;--mute:#6f6a66;--gnd:#343a40;--halo:#ffffff;--pad
 <text x="40" y="905" font-size="13" text-anchor="start" font-weight="normal" fill="var(--ink)" >1. Power everything from the C3's USB-C. Keep LED brightness at or below 60 of 255 (the default): 12 LEDs at full white draw about 0.7 A.</text>
 <text x="40" y="929" font-size="13" text-anchor="start" font-weight="normal" fill="var(--ink)" >2. The encoder's + pin goes to 3V3. Its pull-up resistors would put 5 V on the C3's pins, and the C3 only takes 3.3 V.</text>
 <text x="40" y="953" font-size="13" text-anchor="start" font-weight="normal" fill="var(--ink)" >3. If the ring flickers or shows wrong colours, feed its 5V through a 1N4001 diode (4.3 V), so the C3's 3.3 V data counts as high.</text>
-<text x="40" y="977" font-size="13" text-anchor="start" font-weight="normal" fill="var(--ink)" >4. GPIO9 is also the BOOT button: holding the knob down while plugging in starts the C3 in download mode (useful for flashing).</text>
+<text x="40" y="977" font-size="13" text-anchor="start" font-weight="normal" fill="var(--ink)" >4. E-paper RES goes to 3V3 and BUSY isn't connected, so GPIO3, GPIO4, GPIO8 and GPIO9 stay free for the zip tie round the board.</text>
+<text x="40" y="1001" font-size="13" text-anchor="start" font-weight="normal" fill="var(--ink)" >5. GPIO21 is also the C3's TX pin and chatters while it boots, so don't hold the knob down while plugging the box in.</text>
 </svg>

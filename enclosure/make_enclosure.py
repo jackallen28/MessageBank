@@ -75,20 +75,14 @@ ENC_SHAFT_L = 20.0             # EC11 shaft length from the mounting face
 # ESP32-C3 SuperMini
 ESP_L, ESP_W, ESP_T = 22.52, 18.0, 1.0
 ESP_X = W - 35.0               # centre, across the width (near the screen's header end)
-RIDGE_H = 4.0                  # the board lies flat on a ridge this tall (pin stubs hang beside it)
+RIDGE_H = 2.0                  # the board lies flat on a ridge this tall (keeps the soldered wire ends off the base)
 ESP_PCB_Z = BASE_T + RIDGE_H   # underside of the board
-PIN_ROW_DX = 7.62              # header rows are 15.24 mm apart (pins stick UP)
-PIN_END = 2.37                 # first pin centre from each short edge (8 pins at 2.54 mm)
-HEADER_H = 2.5                 # header plastic
-DUPONT_H = 14.5                # Dupont plug on each pin
-WIRE_ROOM = 7.0                # space above the plugs for the wires to bend
+PIN_ROW_DX = 7.62              # the two pin rows are 15.24 mm apart
 USB_W, USB_L, USB_H, USB_OVERHANG = 8.94, 7.35, 3.2, 1.0
 USB_CUT_W, USB_CUT_H, USB_CUT_R = 12.5, 7.5, 2.0   # rear-wall hole: fits a USB-C plug's overmould
-# ESP clamp: a bridge whose foot presses on the USB-C shell; its bar passes over the Dupont plugs
-# and carries a zip tie through its middle
-TIE_W, TIE_T = 3.6, 1.2        # zip tie strap (a common 3.6 mm tie; 2.5 mm ties fit too)
-CLAMP_L, BAR_H = 6.0, 6.0      # bar: along the board, tall
-TIE_OUT = 5.1                  # the tie goes down this far outside each edge of the board
+# a 2 mm zip tie goes round the middle of the board, between the middle pins (GPIO4/3 and 8/9),
+# which are left free
+TIE_W, TIE_T = 2.0, 1.0
 
 # Vibration module (measure yours)
 VIB_W, VIB_H, VIB_T = 25.0, 21.0, 1.6
@@ -216,45 +210,30 @@ base = cq.Workplane("XY").box(bx1 - bx0, by1 - by0, BASE_T, centered=False).tran
 for x, y in corner:   # countersunk M3 holes from underneath
     base = base.cut(cyl_z(x, y, 1.7, -1, BASE_T + 1))
     base = base.cut(cq.Solid.makeCone(3.3, 1.7, 1.6, V(x, y, -0.001), V(0, 0, 1)))
-for x, y in [(20, 20), (W - 20, 20), (20, DEPTH - 20), (W - 20, DEPTH - 20)]:
+for x, y in [(20, 20), (W - 20, 20), (20, DEPTH - 35), (W - 20, DEPTH - 35)]:
     base = base.cut(cyl_z(x, y, 6.2, -1, 1.0))   # 12 mm stick-on rubber feet sit in these
 # -- ESP32-C3 cradle: a slot holds the far end, a post under the USB end
 esp_y1 = DEPTH - WALL - 0.3 - USB_OVERHANG      # board's USB edge
 esp_y0 = esp_y1 - ESP_L
 ex0, ex1 = ESP_X - ESP_W / 2, ESP_X + ESP_W / 2
-# the board lies flat on a ridge between its two pin rows (the pins' solder stubs hang either side)
-ridge = box(ESP_X - PIN_ROW_DX + 1.6, ESP_X + PIN_ROW_DX - 1.6, esp_y0, esp_y1, BASE_T - 0.01, ESP_PCB_Z)
-# the far end slides under a lip (the slot holds the board's edge 1 mm deep)
-lip = box(ex0 - 2, ex1 + 2, esp_y0 - 3, esp_y0, BASE_T - 0.01, ESP_PCB_Z + ESP_T + 2)
-lip = lip.cut(box(ex0 - 0.2, ex1 + 0.2, esp_y0 - 1.0, esp_y0 + 1, ESP_PCB_Z - 0.1, ESP_PCB_Z + ESP_T + 0.1))
-base = union(base, ridge, lip)
-# -- zip tie path: two slots beside the board, and a groove underneath so the base still sits flat
-usb_cy = esp_y1 + USB_OVERHANG - USB_L / 2      # middle of the USB-C shell
-tie_x = (ex0 - TIE_OUT, ex1 + TIE_OUT)
+# the board lies flat on a ridge between its two pin rows; its far end butts against a stop
+ridge = box(ESP_X - PIN_ROW_DX + 1.6, ESP_X + PIN_ROW_DX - 1.6, esp_y0 + 1, esp_y1, BASE_T - 0.01, ESP_PCB_Z)
+stop = box(ESP_X - 5, ESP_X + 5, esp_y0 - 2.2, esp_y0 - 0.2, BASE_T - 0.01, ESP_PCB_Z + ESP_T + 1.5)
+base = union(base, ridge, stop)
+# -- zip tie round the middle of the board: a slot beside each edge, and a groove underneath so
+# the base still sits flat
+esp_mid = (esp_y0 + esp_y1) / 2                 # between the 4th and 5th pins on each side
+tie_x = (ex0 - 0.9, ex1 + 0.9)
 for tx in tie_x:
-    base = base.cut(box(tx - 1.1, tx + 1.1, usb_cy - 2.25, usb_cy + 2.25, -1, BASE_T + 1))
-base = base.cut(box(tie_x[0] - 1.1, tie_x[1] + 1.1, usb_cy - 2.25, usb_cy + 2.25, -1, 1.6)).clean()
-
-# ============================================================== ESP clamp (black)
-# Sits on the USB-C shell; the zip tie runs through the tunnel in its middle, down through the
-# base slots and back underneath. Tightening it squeezes the board between this and the post.
-usb_top = ESP_PCB_Z + ESP_T + USB_H
-plug_top = ESP_PCB_Z + ESP_T + HEADER_H + DUPONT_H
-bar_z0 = plug_top + WIRE_ROOM
-tie_z = bar_z0 + 1.8 + 0.9                      # middle of the tunnel (1.8 mm floor)
-bar = box(tie_x[0] + 1.2, tie_x[1] - 1.2, usb_cy - CLAMP_L / 2, usb_cy + CLAMP_L / 2, bar_z0, bar_z0 + BAR_H)
-stem = box(ESP_X - 3.5, ESP_X + 3.5, usb_cy - 2.5, usb_cy + 2.5, usb_top, bar_z0 + 0.01)
-foot = box(ESP_X - 5.6, ESP_X + 5.6, usb_cy - 2.5, usb_cy + 2.5, usb_top - 1.2, usb_top + 2.5)
-foot = foot.cut(box(ESP_X - USB_W / 2 - 0.15, ESP_X + USB_W / 2 + 0.15, usb_cy - 3, usb_cy + 3, usb_top - 1.3, usb_top))  # fits over the shell
-clamp = union(bar, stem, foot)
-clamp = clamp.cut(box(tie_x[0], tie_x[1], usb_cy - 2.0, usb_cy + 2.0, tie_z - 0.9, tie_z + 0.9))
-clamp = cq.Workplane().add(clamp).edges("|X and >Z").fillet(1.5).val()
-# the zip tie itself (for the picture): over the clamp, down both sides, under the base
-tie = union(box(tie_x[0] - 0.6, tie_x[1] + 0.6, usb_cy - TIE_W / 2, usb_cy + TIE_W / 2, tie_z - TIE_T / 2, tie_z + TIE_T / 2),
-            box(tie_x[0] - 0.6, tie_x[0] + 0.6, usb_cy - TIE_W / 2, usb_cy + TIE_W / 2, 0.2, tie_z + TIE_T / 2),
-            box(tie_x[1] - 0.6, tie_x[1] + 0.6, usb_cy - TIE_W / 2, usb_cy + TIE_W / 2, 0.2, tie_z + TIE_T / 2),
-            box(tie_x[0] - 0.6, tie_x[1] + 0.6, usb_cy - TIE_W / 2, usb_cy + TIE_W / 2, 0.2, 1.4),
-            box(tie_x[0] - 5.0, tie_x[0] - 0.6, usb_cy - 2.6, usb_cy + 2.6, 12.0, 16.0))   # the tie's head
+    base = base.cut(box(tx - 0.8, tx + 0.8, esp_mid - 1.3, esp_mid + 1.3, -1, BASE_T + 1))
+base = base.cut(box(tie_x[0] - 0.8, tie_x[1] + 0.8, esp_mid - 1.3, esp_mid + 1.3, -1, 1.2)).clean()
+# the zip tie itself (for the picture): over the board, down both edges, under the base
+tie_top = ESP_PCB_Z + ESP_T + 0.95              # it lies over the C3 chip
+tie = union(box(tie_x[0] - 0.5, tie_x[1] + 0.5, esp_mid - TIE_W / 2, esp_mid + TIE_W / 2, tie_top, tie_top + TIE_T),
+            box(tie_x[0] - 0.5, tie_x[0] + 0.5, esp_mid - TIE_W / 2, esp_mid + TIE_W / 2, 0.1, tie_top + TIE_T),
+            box(tie_x[1] - 0.5, tie_x[1] + 0.5, esp_mid - TIE_W / 2, esp_mid + TIE_W / 2, 0.1, tie_top + TIE_T),
+            box(tie_x[0] - 0.5, tie_x[1] + 0.5, esp_mid - TIE_W / 2, esp_mid + TIE_W / 2, 0.1, 1.1),
+            box(tie_x[0] - 4.5, tie_x[0] - 0.5, esp_mid - 1.8, esp_mid + 1.8, tie_top - 2, tie_top + 2))   # the head
 
 # ============================================================== light shroud (black)
 
@@ -344,18 +323,6 @@ esp_usb = box(ESP_X - USB_W / 2, ESP_X + USB_W / 2, esp_y1 + USB_OVERHANG - USB_
               ESP_PCB_Z + ESP_T, ESP_PCB_Z + ESP_T + USB_H)
 esp_parts = union(box(ESP_X - 2.5, ESP_X + 2.5, esp_y0 + 9, esp_y0 + 14, ESP_PCB_Z + ESP_T, ESP_PCB_Z + ESP_T + 0.9),
                   box(ESP_X - 4, ESP_X + 1, esp_y0 + 4, esp_y0 + 6, ESP_PCB_Z + ESP_T, ESP_PCB_Z + ESP_T + 1.2))
-# header pins (sticking up) with Dupont plugs on them, and the solder stubs underneath
-pcb_top = ESP_PCB_Z + ESP_T
-headers, plugs, pins = [], [], []
-for sx in (-1, 1):
-    px = ESP_X + sx * PIN_ROW_DX
-    headers.append(box(px - 1.27, px + 1.27, esp_y0 + PIN_END - 1.27, esp_y1 - PIN_END + 1.27, pcb_top, pcb_top + HEADER_H))
-    plugs.append(box(px - 1.27, px + 1.27, esp_y0 + PIN_END - 1.27, esp_y1 - PIN_END + 1.27, pcb_top + HEADER_H, plug_top))
-    for k in range(8):
-        py = esp_y0 + PIN_END + 2.54 * k
-        pins.append(box(px - 0.32, px + 0.32, py - 0.32, py + 0.32, ESP_PCB_Z - 1.5, ESP_PCB_Z))
-esp_headers = union(*headers, *pins)
-esp_plugs = union(*plugs)
 
 # ============================================================== the assembly
 
@@ -381,9 +348,6 @@ asm.add(F(cq.Compound.makeCompound(epd_parts)), name="epaper_module_parts", colo
 asm.add(esp_pcb, name="esp32c3_pcb", color=PCB_BLACK)
 asm.add(esp_usb, name="esp32c3_usb_c", color=METAL)
 asm.add(esp_parts, name="esp32c3_parts", color=cq.Color(0.3, 0.3, 0.3))
-asm.add(esp_headers, name="esp32c3_headers", color=cq.Color(0.15, 0.15, 0.15))
-asm.add(esp_plugs, name="esp32c3_dupont_plugs", color=cq.Color(0.10, 0.10, 0.10))
-asm.add(clamp, name="esp_clamp", color=BLACK)
 asm.add(tie, name="zip_tie", color=cq.Color(0.92, 0.92, 0.88))
 
 out = os.path.join(HERE, "MessageBox-enclosure.step")
@@ -400,7 +364,6 @@ stl(body_side.translate(V(-bb.xmin, -bb.ymin, -bb.zmin)), "body.stl")
 stl(base, "base.stl")
 stl(shroud.rotate(V(0, 0, 0), V(1, 0, 0), 90), "light_shroud.stl", 0.02)  # top lip on the bed
 stl(diffuser.rotate(V(0, 0, 0), V(1, 0, 0), 90), "diffuser.stl", 0.02)
-stl(clamp.rotate(V(0, 0, 0), V(1, 0, 0), 180), "esp_clamp.stl", 0.02)  # bar's rounded top down, foot up
 print("wrote print/*.stl")
 
 # for previews and checks

@@ -25,10 +25,11 @@
   Libraries (Library Manager): GxEPD2, Adafruit GFX Library, Adafruit NeoPixel.
 
   Wiring (see ../wiring.svg and ../README.md):
-    E-paper  VCC->3V3  GND->GND  SCL->GPIO4  SDA->GPIO6  CS->GPIO7  D/C->GPIO5  RES->GPIO10  BUSY->GPIO3
-    Encoder  +->3V3 (not 5V!)  GND->GND  CLK(S1)->GPIO0  DT(S2)->GPIO1  SW(KEY)->GPIO9
+    E-paper  VCC->3V3  GND->GND  SCL->GPIO10  SDA->GPIO6  CS->GPIO7  D/C->GPIO5  RES->3V3  BUSY not connected
+    Encoder  +->3V3 (not 5V!)  GND->GND  CLK(S1)->GPIO0  DT(S2)->GPIO1  SW(KEY)->GPIO21
     LED ring 5V->5V  GND->GND  DIN->330 ohm->GPIO2            (+ 470 uF across 5V/GND)
     Vibe     VCC->5V  GND->GND  IN->GPIO20
+    Keep GPIO4, GPIO3, GPIO8 and GPIO9 (the middle two pins on each side) free for the zip tie.
 
   First start: the box opens its own Wi-Fi "MessageBox-Setup" (password "messagebox").
   Join it and open http://192.168.4.1 to test every part and enter the Wi-Fi and Gmail details.

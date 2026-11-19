@@ -48,6 +48,9 @@ The firmware is built around that:
 
 If long jumper wires give a garbled picture, lower `EPD_SPI_HZ` in `config.h` to 4000000.
 
+The e-paper's BUSY line isn't wired (to keep the middle pins free), so the firmware waits the
+driver's fixed time for each refresh: 0.35 s for a fast one and 1.5 s for a full one.
+
 ## Parts
 
 | Part | What it does |
@@ -67,12 +70,12 @@ If long jumper wires give a garbled picture, lower `EPD_SPI_HZ` in `config.h` to
 |---|---|---|
 | E-paper **VCC** | C3 **3V3** | |
 | E-paper **GND** | C3 **GND** | |
-| E-paper **SCL** (clock) | **GPIO4** | |
+| E-paper **SCL** (clock) | **GPIO10** | |
 | E-paper **SDA** (data) | **GPIO6** | |
 | E-paper **CS** | **GPIO7** | |
 | E-paper **D/C** | **GPIO5** | |
-| E-paper **RES** | **GPIO10** | |
-| E-paper **BUSY** | **GPIO3** | |
+| E-paper **RES** | C3 **3V3** | Tied high: no wire to a GPIO |
+| E-paper **BUSY** | not connected | The firmware waits the panel's fixed refresh time instead |
 | Ring **5V** | C3 **5V** | 470 µF across the ring's 5V and GND (+ leg to 5V) |
 | Ring **GND** | C3 **GND** | |
 | Ring **IN** (DIN) | 330 Ω → **GPIO2** | Leave the ring's OUT unconnected |
@@ -80,12 +83,15 @@ If long jumper wires give a garbled picture, lower `EPD_SPI_HZ` in `config.h` to
 | Encoder **GND** | C3 **GND** | |
 | Encoder **CLK** (S1) | **GPIO0** | |
 | Encoder **DT** (S2) | **GPIO1** | |
-| Encoder **SW** (KEY) | **GPIO9** | The same pin as the C3's BOOT button |
+| Encoder **SW** (KEY) | **GPIO21** | |
 | Vibration **VCC** | C3 **5V** | |
 | Vibration **GND** | C3 **GND** | |
 | Vibration **IN** | **GPIO20** | |
 
-GPIO8 drives the C3's own blue LED, which lights while Gmail is being checked. GPIO21 is free.
+**Keep the middle two pins on each side free: GPIO4 and GPIO3, GPIO8 and GPIO9.** A 2 mm zip tie
+goes round the middle of the board between them to hold it in the case. (GPIO8 also drives the
+C3's own blue LED, which lights while Gmail is being checked.) Solder jumper wires straight to
+the pins you use; there's no need for header pins.
 
 Things to know:
 
@@ -95,10 +101,11 @@ Things to know:
 - **If the ring flickers or shows the wrong colours**, the C3's 3.3 V data signal may be too low
   for a ring running on 5 V. Feed the ring's 5V through a 1N4001 diode (stripe towards the ring).
   That gives the ring about 4.3 V, and 3.3 V then counts as "high".
-- **GPIO2 and GPIO9 are "strapping" pins** that the C3 reads at power-up. They're fine for these
-  jobs. If you hold the knob down while plugging in, the C3 starts in download mode. That's
-  handy for flashing; just don't hold it by accident.
-- The e-paper uses the C3's hardware SPI on GPIO4 and GPIO6.
+- **GPIO2 is a "strapping" pin** that the C3 reads at power-up. It's fine for the LED ring's
+  data line.
+- The e-paper uses the C3's hardware SPI on GPIO10 (clock) and GPIO6 (data).
+- **GPIO21 is also the C3's TX pin** and chatters while it boots. Don't hold the knob down while
+  plugging the box in.
 - On the encoder, if one click moves two messages, set `ENC_STEPS_PER_DETENT` to 2 at the top
   of the sketch.
 
