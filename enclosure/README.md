@@ -2,33 +2,80 @@
 
 ![Renders of the enclosure](renders.png)
 
-A low desk unit, **140 × 145 × 92 mm** (wide × deep × tall). From the side it's a flat front
-deck with the knob on top, rising at the back into a block whose sloped face holds the screen.
+A desk unit, **140 × 145 × 111 mm** (wide × deep × tall). From the side it's a flat front deck
+with the knob on top, rising at the back into a block whose sloped face holds the screen.
 
 - **Screen:** the 3.7" e-paper sits landscape on the face, which leans back **30°** from
   vertical so it's easy to read from a chair.
-- **Knob:** it stands up out of the deck. Around it, a **0.4 mm white diffuser** ring sits
-  **10 mm above the WS2812 LEDs** (see below for why). A **black light shroud** holds the
-  diffuser and has walls outside it and a disc inside it, so the light can't bleed into the
-  **green body**.
-- **Finish:** the body has a **fluted texture**: 1 mm grooves every 2 mm, 0.6 mm deep, running
-  the same way as the layer lines, so the 0.2 mm layer lines disappear into deliberate ribs.
-  Smooth frames surround the screen, the ring and the USB-C hole.
-- **ESP32-C3:** it sits on a cradle at the back, with its **USB-C reachable through the rear
-  wall**. That is also how the box is powered.
-- **Vibration motor:** it's screwed under the shroud, so the haptic ticks come up through the
-  knob.
+- **Knob and ring:** the printed knob stands up out of the deck. Round it, a **0.4 mm white
+  diffuser** sits **10 mm above the WS2812 LEDs**, held in a **black light shroud** whose walls
+  stop light bleeding into the **green body**.
+- **Deck height:** the deck is 48.5 mm tall, so the encoder has **35 mm under its mounting
+  face** for its wires.
+- **Finish:** the walls are ribbed (1 mm grooves every 2 mm, 0.6 mm deep), running the same way
+  as the layer lines, so the 0.2 mm lines disappear into the ribs. The deck top, the top behind
+  the screen and a frame round the screen stay smooth.
+- **ESP32-C3:** it lies flat on a ridge in the base, held by a 2 mm zip tie, with **20 mm clear
+  above it** for wires. Its USB-C sits in a **recessed pocket** in the rear wall that takes a
+  13 × 8 mm plug body.
+- **Vibration board:** it's screwed flat under the shroud, so the ticks come up through the knob.
+  Its wire edge faces into open space, with 20 mm of room.
+- **Screws:** every screw is the **same small self-tapper** (about 3 mm), in 2.5 mm pilot holes.
 
 | File | What it is |
 |---|---|
 | `MessageBox-enclosure.step` | The whole assembly with colours: every printed part and every component in place. Opens in Fusion, FreeCAD, Onshape, SolidWorks and others. |
-| `print/body.stl` | Green. Prints on its side: the side profile flat on the bed, so every wall stands upright. |
-| `print/base.stl` | Green. Prints flat, with the ESP32-C3 cradle and the screw posts facing up. |
-| `print/light_shroud.stl` | Black (it must not glow). Prints top-lip down; it needs supports under the flange. |
-| `print/diffuser.stl` | White. A 0.4 mm flat ring: two 0.2 mm layers, printed flat. |
+| `print/body.stl` | Green. Prints **upright, open side down**. |
+| `print/base.stl` | Green. Prints flat, ridge and posts up. |
+| `print/light_shroud.stl` | Black. Prints flange-down. |
+| `print/diffuser.stl` | White. A 0.4 mm flat ring. |
+| `print/knob.stl` | Black. A 20 mm knob with a plain top and thimble dimples round the side. Prints top-down. |
 | `make_enclosure.py` | Makes all of the above. Every size is a parameter at the top. |
-| `check_fit.py` | Builds the model and reports any parts that overlap (there are none). |
-| `ring-section.png`, `section_drawing.py` | A cut through the knob showing the diffuser, the 10 mm air gap and the LED ring. |
+| `print_check.py` | The print-readiness check below. |
+| `ring-section.png`, `section_drawing.py` | A cut through the knob: diffuser, 10 mm air gap, LED ring, encoder. |
+
+## Print-readiness check
+
+`python3 print_check.py` rebuilds the model and checks everything below. It currently passes
+every check.
+
+| Check | Result |
+|---|---|
+| Printed parts | Body, base, shroud, diffuser and knob: each one valid solid |
+| Overlaps | No two parts overlap (all components included) |
+| Encoder | 35.3 mm from its mounting face to the base; the column under its board is empty |
+| ESP32-C3 | 20 mm clear above the whole board |
+| Vibration board | 20 mm clear off its wire edge |
+| LED ring | Its wired pins drop through a 50° slot in the channel floor, with 15 mm clear below |
+| E-paper header | 25 mm clear behind it |
+| USB-C | 13 × 8 plug body in a 14.5 × 9 pocket; the socket sits 1.3 mm behind it, so any cable reaches |
+| Diffuser | 0.2 mm gap each side; rests on 0.8 mm ledges at both edges |
+| Shroud in the deck | 0.2 mm gap; base in the body 0.25 mm |
+| Knob | 0.5 mm above the deck, 5 mm clear of the diffuser; covers the nut pocket |
+| Nut pocket | 15.5 mm, so a 10 mm socket fits |
+| Encoder plate | Has a groove for the anti-rotation tab, so the encoder sits flat |
+| Thinnest walls | 1.9 mm under the ribs; 1.0 mm at the USB pocket; 1.8 mm base under the zip-tie groove |
+| Screen screw pilots | Leave 0.9 mm of face wall in front |
+| STL files | Watertight, and fit a 220 × 220 × 250 mm bed |
+
+## Printing
+
+| Part | Colour | Orientation | Settings | Supports |
+|---|---|---|---|---|
+| Body | Green | Upright, open side down (as exported) | 0.2 mm layers, 3 walls, 15 % infill | **Tree supports, from the build plate and on the model.** They only form inside: under the deck roof, the roof behind the screen, the screen window's top edge, the four corner posts and the screw bosses. The outside needs none. |
+| Base | Green | Flat, ridge and posts up | 0.2 mm, 3 walls, 20 % | None. The zip-tie groove and foot recesses underneath are short bridges. |
+| Light shroud | **Black** | Flange down | 0.2 mm, **100 % infill** so no light gets through | None. The encoder plate over the hub is a 20 mm round bridge. |
+| Diffuser | White PLA/PETG | Flat | 0.2 mm (exactly two layers), 100 %, concentric top pattern | None |
+| Knob | Black | Top down (as exported) | 0.12–0.16 mm layers for crisp dimples, 100 % | None. Use a brim if it wobbles. |
+
+Notes:
+
+- **Body texture:** printed upright, the grooves line up with the layers. Each groove is just a
+  few layers printed 0.6 mm further in, a step that needs no support.
+- **Diffuser:** if you can still see the LEDs as dots, set `DIFF_T = 0.6`. If it's too dim, use
+  natural (translucent) PETG.
+- **Knob fit:** its 5.9 mm hole presses onto the KY-040's knurled split shaft. For a D-shaft
+  encoder, set `KNOB_BORE = 6.1` and add a drop of glue.
 
 ## The diffuser: why 10 mm
 
@@ -36,8 +83,7 @@ deck with the knob on top, rising at the back into a block whose sloped face hol
 
 The 12 LEDs are 11.3 mm apart round the ring. A 0.4 mm diffuser is thin and lets a lot of light
 straight through, so it shows the LEDs as dots unless their light has spread before it gets
-there. I modelled each WS2812B as a wide-angle (120°) emitter and worked out how evenly they
-light the diffuser at different gaps:
+there. Modelling each WS2812B as a wide-angle (120°) emitter:
 
 | LED tops to diffuser | Darkest point between two LEDs, compared with over one | Inner / outer edge of the ring |
 |---|---|---|
@@ -47,111 +93,74 @@ light the diffuser at different gaps:
 | **10 mm** | **91 %: a smooth band** | **86 % / 69 %** |
 | 12 mm | 96 % | 93 % / 75 % |
 
-Above about 90 % the eye sees one continuous ring, and the diffuser's own scattering evens it
-out a little more. 10 mm is also about as deep as the 30 mm deck allows with the vibration motor
-underneath. Moving the LEDs further away makes the ring dimmer: at 10 mm it's about a third as
-bright as at 3 mm. That doesn't matter here, because the LEDs run at 60 of 255 by default.
-`DIFF_GAP` and `DIFF_T` in the script change it.
-
-## Rebuilding after changing a size
-
-```
-pip install cadquery            # CadQuery 2.8
-python3 make_enclosure.py       # ~10 s; downloads WeAct's e-paper model the first time
-python3 check_fit.py            # optional: reports overlapping parts
-```
-
-Things worth changing at the top of the script:
-
-- `SCREEN_TILT`: the screen angle.
-- `DECK_H`, `DECK_L`: the deck height and length.
-- `W`: the width.
-- The colours.
-- Your own part sizes.
+Above about 90 % the eye sees one continuous ring. At 10 mm it's about a third as bright as at
+3 mm, which doesn't matter: the LEDs run at 60 of 255. `DIFF_GAP` and `DIFF_T` change it.
 
 ## Before printing: measure these
 
-The e-paper board, its holes and its connector come from **WeAct's own 3D model and outline
-drawing**, so those are exact. Everything else comes from datasheets and listings. Check these
-against your parts:
+The e-paper board, its holes and its header come from **WeAct's own 3D model and drawing**, so
+those are exact. Everything else is from datasheets and listings:
 
 | Part | Assumed | Parameter |
 |---|---|---|
 | LED ring | 50 mm across, 36 mm hole, 1.6 mm board | `RING_OD`, `RING_ID` |
-| Glass border on the ribbon-cable end of the e-paper | 7.0 mm (the other end then has 4.45 mm). If the window shows a strip of border, change this. | `ACTIVE_FPC_BORDER` |
-| Encoder module board | 26 mm round; shaft 20 mm from the mounting face | `ENC_SHAFT_L` |
-| Knob | 15 mm across, 16 mm tall | `KNOB_D`, `KNOB_H` |
-| Vibration board | 25 × 21 mm, two holes 18 mm apart, 7.5 mm below its centre | `VIB_*` |
-| ESP32-C3 SuperMini | 22.5 × 18 mm, USB-C sticking out 1 mm; pin rows 15.24 mm apart | `ESP_*`, `USB_*`, `PIN_ROW_DX` |
+| Glass border on the ribbon end of the e-paper | 7.0 mm (4.45 mm at the other end). If the window shows a strip of border, change it. | `ACTIVE_FPC_BORDER` |
+| Encoder module | 26 mm round board; shaft 20 mm from the mounting face, knurled 6 mm | `ENC_SHAFT_L`, `KNOB_BORE` |
+| Vibration board | 21 × 25 mm, two holes 18 mm apart on the wire edge | `VIB_*` |
+| ESP32-C3 SuperMini | 22.5 × 18 mm; USB-C sticking out 1 mm | `ESP_*`, `USB_*` |
 
-A quick check: print just the diffuser and the shroud first, and see that they fit the ring
-and the knob.
+Quick test: print the knob, diffuser and shroud first (about 1.5 hours together), then check
+they fit the encoder and the ring before the long body print.
 
 ## Hardware
 
 | Qty | Part | For |
 |---|---|---|
-| 4 | M2.5 × 5 mm self-tapping screws | E-paper board to the bosses inside the screen face |
-| 3 | M2.5 × 8 mm self-tapping screws | Light shroud to the bosses under the deck |
-| 2 | M2 × 5 mm self-tapping screws | Vibration board to the shroud |
-| 4 | M3 × 12 mm countersunk self-tapping screws | Base to the body |
+| 13 | Small self-tapping screws for a 2.5 mm pilot (about 3 mm): 4 × 5 mm, 2 × 6–8 mm, 3 × 8 mm, 4 × 12 mm countersunk | Screen (4, **5 mm at most**), vibration board (2), shroud (3), base (4) |
 | 4 | 12 mm stick-on rubber feet | Recesses in the base |
-| 1 | 2 mm zip tie, about 100 mm long | Holds the ESP32-C3 down, round the middle of the board |
-| | Thin double-sided foam tape (about 0.4 mm) | Between the e-paper glass and the inside of the screen face, round the window |
+| 1 | 2 mm zip tie, about 100 mm | ESP32-C3 |
+| | Thin double-sided foam tape (about 0.4 mm) | Between the e-paper glass and the face, round the window |
 
 ## Putting it together
 
-1. **Diffuser into the shroud:**
-   - Drop the LED ring into the shroud's channel from the top, LEDs facing up. Its wires go out
-     through the slot in the channel floor.
-   - Lay the 0.4 mm diffuser into the top. It rests on a step on the outer wall and one on the
-     black hub, 10 mm above the LEDs. A thin bead of clear glue round the outer edge holds it.
+1. **Light shroud:**
+   - Drop the LED ring into the shroud's channel, LEDs up. Turn it so its wired pins drop through
+     the arc slot in the channel floor (behind the knob).
+   - Lay the 0.4 mm diffuser on top. It rests on a step on the outer wall and one on the black
+     hub. A thin bead of clear glue round its outer edge holds it.
 2. **Encoder:**
-   - Push the encoder's threaded bushing up through the shroud's centre hole from underneath.
-   - Tighten its nut from the top, inside the black hub.
-   - Hang the vibration board under the shroud on its two posts, motor facing down.
-3. **Pins:** the deck is low (30 mm), so the encoder module's pins must not point straight
-   down with Dupont plugs on them. **Solder wires to the pins, or bend the pins sideways.**
-   There's about 3 mm to spare under them.
-4. **Shroud into the body:** screw the shroud up under the deck with 3 screws. The black rim,
-   white ring and black hub end flush with the deck top. Push the knob on.
+   - Push its threaded bushing up through the shroud's centre hole from underneath, with its
+     small tab in the groove so it sits flat.
+   - Tighten the nut from the top with a 10 mm socket.
+3. **Vibration board:** screw it flat to the underside of the shroud's flange (2 screws), wire
+   edge facing right (seen from the front).
+4. **Shroud into the body:** screw it up under the deck (3 screws). The black rim, white ring
+   and black hub end flush with the deck top. Press the knob onto the shaft.
 5. **E-paper:**
    - Put foam tape round the window inside the screen face.
-   - Lay the e-paper glass-first on the tape, and screw the board to the 4 bosses.
-   - Its header ends up on the right (seen from the front), next to where the ESP32-C3 sits.
+   - Lay the module glass-first on the tape. Screw it to the four bosses through its own corner
+     holes. **Use 5 mm screws at most**, or they push through the face.
+   - Its header ends up on the right (seen from the front).
 6. **ESP32-C3:**
-   - Solder the jumper wires straight to the pins you use; there's no need for header pins.
-     **Leave the middle two pins on each side free:** GPIO4 and GPIO3 on one side, GPIO8 and
-     GPIO9 on the other. The firmware doesn't use them.
-   - Lay the board flat on the ridge in the base, with the USB-C in the rear-wall hole and the
-     far end against the stop. The ridge keeps the solder joints underneath off the base.
-   - Feed a 2 mm zip tie up through the slot beside one edge of the board, over the middle of the
-     board (between the free pins), and down the slot by the other edge. Lock it under the base:
-     the groove there keeps the strap flush, so the base still sits flat. Pull it snug and trim
-     the tail.
-   ![The ESP32-C3 held by a zip tie round its middle](esp-clamp.png)
+   - Solder the jumper wires to the pins you use.
+   - Lay the board flat on the ridge, USB-C into the rear pocket, far end against the stop.
+   - Feed the 2 mm zip tie up through one slot, over the board on the **GPIO3 and GPIO9 pads**
+     (the 5th pin from the USB end on each side, which firmware v9 leaves free), and down the
+     other slot. Lock it in the groove under the base and trim it.
+   ![The ESP32-C3 held by a zip tie](esp-clamp.png)
 7. **Close it up:**
    - Wire everything as in [`../wiring.svg`](../wiring.svg).
-   - Fit the base into the bottom with the USB-C lined up with the rear-wall hole.
-   - Screw the base on and stick on the feet.
+   - Fit the base, with the USB-C lined up with its pocket, and screw it on (4 countersunk
+     screws).
+   - Stick on the feet.
 
-**Screen orientation:** the screen is landscape in this box. The firmware now starts in
-landscape. If the picture is upside down, choose **Screen orientation → Landscape, flipped** on
-the setup page.
+**Screen orientation:** if the picture is upside down, choose **Screen orientation → Landscape,
+flipped** on the setup page.
 
-## Printing
+## Rebuilding after changing a size
 
-- **Body:** 0.2 mm layers, 3 walls, 15 % infill, printed on its side as exported.
-  - **Texture:** the flutes then line up with the layers, so each groove is just a few layers
-    printed 0.6 mm further in. There are no overhangs and nothing to support.
-  - **Supports:** only the round opening in the deck and the screen window may need them. Both
-    are bridges, which most printers manage; use supports there if yours doesn't.
-  - **Side faces:** the side on the bed takes the bed's finish, so a textured PEI sheet gives it
-    a matching matte look. Ironing tidies the top side.
-- **Light shroud:** black, 100 % infill, so no light gets through. Print it top-lip down. Slicer
-  supports are needed under the flange, and the channel floor may need them too.
-- **Diffuser:** white PLA or PETG, 0.2 mm layers (exactly two), 100 % infill, no supports.
-  - Use a concentric top pattern so its lines follow the ring.
-  - If you can still see dots, make it 0.6 mm thick (`DIFF_T = 0.6`). If it's too dim, use
-    natural (translucent) PETG instead of white.
-- **Base:** no supports.
+```
+pip install cadquery trimesh    # CadQuery 2.8
+python3 make_enclosure.py       # ~30 s; downloads WeAct's e-paper model the first time
+python3 print_check.py          # ~1 min
+```

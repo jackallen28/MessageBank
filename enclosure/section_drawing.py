@@ -34,7 +34,7 @@ def section(shape, x):
 
 
 fig, ax = plt.subplots(figsize=(11, 6.2), dpi=200)
-show = ["body", "base", "light_shroud", "diffuser", "led_ring_pcb", "led_ring_leds", "knob", "knob_cap",
+show = ["body", "base", "light_shroud", "diffuser", "led_ring_pcb", "led_ring_leds", "knob",
         "encoder_body", "encoder_shaft_nut", "encoder_pcb", "vibration_pcb", "vibration_motor"]
 for name in show:
     shape, col = parts[name]

@@ -39,7 +39,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # ============================================================== PARAMETERS
 
 W = 140.0            # width
-DECK_H = 30.0        # height of the flat front deck
+DECK_H = 48.5        # height of the flat front deck: 35 mm under the encoder's mounting face for its wires
 DECK_L = 84.0        # deck length, front edge to the bottom of the screen face
 SCREEN_TILT = 30.0   # screen face leans back from vertical (degrees)
 FACE_L = 72.0        # length of the screen face, along the slope
@@ -47,10 +47,11 @@ TOP_L = 25.0         # flat top behind the screen
 WALL = 2.5           # wall thickness
 BASE_T = 3.0         # base plate thickness
 EDGE_R = 4.0         # outside corner rounding
-# Fluted texture on the body: grooves running the same way as the layer lines (the body prints on
-# its side), so 0.2 mm layer lines vanish into deliberate 2 mm ribs. Each groove prints as a plain step.
+# Ribbed texture on the walls: horizontal grooves, the same way as the layer lines (the body prints
+# upright, open side down), so 0.2 mm layer lines vanish into deliberate 2 mm ribs. The deck top and
+# the top behind the screen print as smooth top surfaces and stay plain.
 TEX_PITCH, TEX_GROOVE, TEX_DEPTH = 2.0, 1.0, 0.6
-TEX_MARGIN = 3.0     # smooth band round the screen and the ring
+TEX_MARGIN = 3.0     # smooth band round the screen and the USB-C socket
 # WeAct 3.7" e-paper module (from WeAct's outline drawing), mounted landscape
 EPD_PCB_L, EPD_PCB_W, EPD_PCB_T = 105.79, 53.80, 1.69
 EPD_HOLE_INSET = 2.80          # M3 holes (3.2 mm), 2.8 mm in from each edge
@@ -60,6 +61,10 @@ ACTIVE_L, ACTIVE_W = 81.54, 47.04
 ACTIVE_FPC_BORDER = 7.00       # glass border on the ribbon-cable end (the header end): check yours
 WINDOW_MARGIN = 0.60           # window is this much bigger than the active area on each side
 EPD_TAPE = 0.4                 # foam tape between glass and the wall
+SCREW_PILOT = 2.5              # every screw is the same small self-tapper (about 3 mm), in 2.5 mm pilot holes
+SCREW_CLEAR = 3.3              # ...and through 3.3 mm clearance holes
+EPD_PILOT = SCREW_PILOT        # the screen's 4 screws go through the board's own 3.2 mm holes
+EPD_PILOT_DEPTH = 3.2          # leaves 0.9 mm of the face wall in front of each: screws 5 mm long at most
 
 # LED ring, diffuser, shroud, knob
 RING_OD, RING_ID, RING_T = 50.0, 36.0, 1.6
@@ -76,7 +81,9 @@ LEDGE_R = 26.0                 # the diffuser rests on this step
 PLATE_T = 2.0                  # encoder plate and LED-channel floor thickness
 FLANGE_R = 37.0
 SCREW_R = 33.0                 # shroud screws (M2.5 x 8, self-tapping)
-KNOB_D, KNOB_H = 15.0, 16.0
+KNOB_D, KNOB_H = 20.0, 16.0   # printed knob: plain top, thimble dimples round the side
+KNOB_BORE = 5.9                # tight on the KY-040's knurled split 6 mm shaft (6.1 for a D shaft + glue)
+KNOB_BORE_DEPTH = 11.0
 KNOB_LIFT = 0.5                # knob skirt above the deck
 ENC_SHAFT_L = 20.0             # EC11 shaft length from the mounting face
 
@@ -87,14 +94,18 @@ RIDGE_H = 2.0                  # the board lies flat on a ridge this tall (keeps
 ESP_PCB_Z = BASE_T + RIDGE_H   # underside of the board
 PIN_ROW_DX = 7.62              # the two pin rows are 15.24 mm apart
 USB_W, USB_L, USB_H, USB_OVERHANG = 8.94, 7.35, 3.2, 1.0
-USB_CUT_W, USB_CUT_H, USB_CUT_R = 12.5, 7.5, 2.0   # rear-wall hole: fits a USB-C plug's overmould
-# a 2 mm zip tie goes round the middle of the board, between the middle pins (GPIO4/3 and 8/9),
-# which are left free
+USB_CUT_W, USB_CUT_H, USB_CUT_R = 10.0, 4.6, 1.5   # through the rear wall: the plug's metal end
+USB_POCKET_W, USB_POCKET_H, USB_POCKET_R, USB_POCKET_D = 14.5, 9.0, 3.0, 1.5  # outside recess for the plug's
+                               # body, so the wall at the socket is 1 mm and any cable's plug reaches
+# a 2 mm zip tie goes round the board over the GPIO3 and GPIO9 pads, which are left free
 TIE_W, TIE_T = 2.0, 1.0
 
 # Vibration module (measure yours)
 VIB_W, VIB_H, VIB_T = 25.0, 21.0, 1.6
-VIB_HOLE_DX, VIB_HOLE_DY = 9.0, 7.5   # holes from the board centre (two, along one edge)
+VIB_HOLE_DX, VIB_HOLE_DY = 9.0, 7.5   # holes from the board centre (two, along the wire edge)
+VIB_OFF = 27.0                 # board centre this far to the right of the knob; its wire edge faces right
+VIB_WIRES = 20.0               # the wires leave that edge and need this much room
+RING_WIRES = 15.0              # the LED ring's wired pins hang this far below the ring board
 VIB_MOTOR_D, VIB_MOTOR_T = 10.0, 3.0
 
 GREEN = cq.Color(0.16, 0.55, 0.30)
@@ -188,7 +199,7 @@ for du in (EPD_HOLE_INSET, EPD_PCB_L - EPD_HOLE_INSET):
     for dv in (EPD_HOLE_INSET, EPD_PCB_W - EPD_HOLE_INSET):
         u, v = EPD_U0 + du, EPD_V0 + dv
         bosses.append(cyl_w(u, v, 3.0, WALL - 0.5, pcb_w0))
-        pilots.append(cyl_w(u, v, 1.1, pcb_w0 - 3.5, pcb_w0 + 0.1))     # M2.5 x 5 self-tapping
+        pilots.append(cyl_w(u, v, EPD_PILOT / 2, pcb_w0 - EPD_PILOT_DEPTH, pcb_w0 + 0.1))  # small self-tapper, max 5 mm
 body = body.fuse(F(union(*bosses))).cut(F(union(*pilots)))
 w_led_front = DIFF_T + DIFF_GAP                # tops of the LEDs
 w_ring_front = w_led_front + LED_H
@@ -201,7 +212,7 @@ bosses, pilots = [], []
 for a in SCREW_ANGLES:
     du, dv = polar(SCREW_R, a)
     bosses.append(cyl_w(RING_U + du, RING_V + dv, 3.5, WALL - 0.5, floor_w0))
-    pilots.append(cyl_w(RING_U + du, RING_V + dv, 1.1, floor_w0 - 6, floor_w0 + 0.1))  # M2.5 x 8
+    pilots.append(cyl_w(RING_U + du, RING_V + dv, SCREW_PILOT / 2, floor_w0 - 6, floor_w0 + 0.1))  # 8 mm screw
 body = body.fuse(D(union(*bosses))).cut(D(union(*pilots)))
 
 # -- base screw posts (vertical, in the corners, merged into the walls) and the USB-C hole
@@ -212,6 +223,8 @@ for x, y in corner:
 usb_z = ESP_PCB_Z + ESP_T + USB_H / 2
 usb_cut = (cq.Workplane("XZ", origin=(0, DEPTH + 1, 0)).center(ESP_X, usb_z)
            .rect(USB_CUT_W, USB_CUT_H).extrude(WALL + 2).edges("|Y").fillet(USB_CUT_R)).val()
+usb_cut = usb_cut.fuse((cq.Workplane("XZ", origin=(0, DEPTH + 1, 0)).center(ESP_X, usb_z)
+                        .rect(USB_POCKET_W, USB_POCKET_H).extrude(1 + USB_POCKET_D).edges("|Y").fillet(USB_POCKET_R)).val())
 body = body.cut(usb_cut).clean()
 
 # -- fluted texture: a 0.6 mm skin under the outside surface, sliced into 1 mm grooves every 2 mm
@@ -222,15 +235,16 @@ from OCP.BRepOffset import BRepOffset_Skin
 from OCP.GeomAbs import GeomAbs_Arc
 _off = BRepOffsetAPI_MakeOffsetShape()
 _off.PerformByJoin(outer.wrapped, -TEX_DEPTH, 1e-4, BRepOffset_Skin, False, False, GeomAbs_Arc)
-skin = outer.cut(cq.Shape.cast(_off.Shape()))       # the outer 0.6 mm of the body
-xs = np.arange(EDGE_R + 2, W - EDGE_R - 2 - TEX_GROOVE, TEX_PITCH)
-slabs = cq.Compound.makeCompound([box(x, x + TEX_GROOVE, -1, DEPTH + 1, 1.5, TOTAL_H + 1) for x in xs])
+skin = outer.cut(cq.Shape.cast(_off.Shape()))
+body_plain = body       # the outer 0.6 mm of the body
+zs = [z for z in np.arange(2.0, TOTAL_H - EDGE_R - 1.5, TEX_PITCH)
+      if z + TEX_GROOVE < DECK_H - EDGE_R - 0.5 or z > DECK_H + 1.0]   # keep the deck's top edge plain
+slabs = cq.Compound.makeCompound([box(-1, W + 1, -1, DEPTH + 1, z, z + TEX_GROOVE) for z in zs])
 keep = union(
     F(box(EPD_U0 - TEX_MARGIN, EPD_U0 + EPD_PCB_L + TEX_MARGIN, -2, WALL + 2,
           EPD_V0 - TEX_MARGIN, EPD_V0 + EPD_PCB_W + TEX_MARGIN)),                 # screen frame
-    D(cyl_w(RING_U, RING_V, SCREW_R + 3.5 + TEX_MARGIN, -2, WALL + 2)),            # ring collar
-    box(ESP_X - USB_CUT_W / 2 - TEX_MARGIN - 2, ESP_X + USB_CUT_W / 2 + TEX_MARGIN + 2,
-        DEPTH - WALL - 1, DEPTH + 1, 0, usb_z + USB_CUT_H / 2 + TEX_MARGIN + 2))   # USB-C surround
+    box(ESP_X - USB_POCKET_W / 2 - TEX_MARGIN, ESP_X + USB_POCKET_W / 2 + TEX_MARGIN,
+        DEPTH - WALL - 1, DEPTH + 1, 0, usb_z + USB_POCKET_H / 2 + TEX_MARGIN))    # USB-C surround
 grooves = skin.intersect(slabs).cut(keep)
 body = body.cut(grooves).clean()
 
@@ -255,7 +269,10 @@ stop = box(ESP_X - 5, ESP_X + 5, esp_y0 - 2.2, esp_y0 - 0.2, BASE_T - 0.01, ESP_
 base = union(base, ridge, stop)
 # -- zip tie round the middle of the board: a slot beside each edge, and a groove underneath so
 # the base still sits flat
-esp_mid = (esp_y0 + esp_y1) / 2                 # between the 4th and 5th pins on each side
+# over the 5th pin from the USB end on each side: GPIO3 and GPIO9, which firmware v9 leaves free
+# (its neighbours GPIO4/GPIO2 and GPIO8/GPIO10 carry wires, 2.54 mm either side)
+TIE_PIN = 4                                     # 0 = the pin nearest the USB-C socket
+esp_mid = esp_y1 - 2.37 - 2.54 * TIE_PIN
 tie_x = (ex0 - 0.9, ex1 + 0.9)
 for tx in tie_x:
     base = base.cut(box(tx - 0.8, tx + 0.8, esp_mid - 1.3, esp_mid + 1.3, -1, BASE_T + 1))
@@ -271,6 +288,7 @@ tie = union(box(tie_x[0] - 0.5, tie_x[1] + 0.5, esp_mid - TIE_W / 2, esp_mid + T
 # ============================================================== light shroud (black)
 
 HUB_IN = 10.0   # inside the hub below the encoder plate (the encoder body is 12 x 12.5 mm)
+NUT_POCKET_R = 7.75  # the knob (15 mm) covers it
 sh = union(
     ring_w(RING_U, RING_V, SLEEVE_R_IN, SLEEVE_R_OUT, 0, DIFF_T),          # top lip (round the diffuser)
     ring_w(RING_U, RING_V, LEDGE_R, SLEEVE_R_OUT, DIFF_T, floor_w0),       # outer wall, with the diffuser's ledge
@@ -279,17 +297,24 @@ sh = union(
     ring_w(RING_U, RING_V, HUB_IN, HUB_R + 1, plate_w1, floor_w0),         # hub wall down to the floor
     ring_w(RING_U, RING_V, HUB_IN, FLANGE_R, floor_w0, floor_w1),          # LED channel floor + flange
 )
-sh = sh.cut(cyl_w(RING_U, RING_V, 5.5, -1, plate_w0))                      # pocket for the encoder nut
+sh = sh.cut(cyl_w(RING_U, RING_V, NUT_POCKET_R, -1, plate_w0))             # pocket: room for a 10 mm socket on the nut
+sh = sh.cut(ring_w(RING_U, RING_V, 5.6, 8.9, plate_w1 - 1.0, plate_w1 + 0.1))  # groove for the encoder's anti-rotation tab
 sh = sh.cut(cyl_w(RING_U, RING_V, 3.6, plate_w0 - 1, plate_w1 + 1))        # 7 mm bushing hole
 for a in SCREW_ANGLES:
     du, dv = polar(SCREW_R, a)
-    sh = sh.cut(cyl_w(RING_U + du, RING_V + dv, 1.4, floor_w0 - 1, floor_w1 + 1))
-sh = sh.cut(box(RING_U - 4, RING_U + 4, floor_w0 - 0.5, floor_w1 + 1, RING_V + 18.5, RING_V + 24.5))  # ring wires
-# vibration-module standoffs under the flange (towards the front of the box)
-vib_cv = RING_V - 27.0
-for sx in (-1, 1):
-    hu, hv = RING_U + sx * VIB_HOLE_DX, vib_cv - VIB_HOLE_DY
-    sh = sh.fuse(cyl_w(hu, hv, 2.5, floor_w1 - 0.01, floor_w1 + 3)).cut(cyl_w(hu, hv, 0.9, floor_w1, floor_w1 + 3.1))
+    sh = sh.cut(cyl_w(RING_U + du, RING_V + dv, SCREW_CLEAR / 2, floor_w0 - 1, floor_w1 + 1))
+# a 50 degree arc slot in the floor (behind the knob) for the ring's wired pins to drop through:
+# turn the ring so its pads sit over it
+slot = (cq.Workplane("XZ", origin=(0, floor_w1 + 1, 0))
+        .polyline([(RING_U, RING_V)] + [(RING_U + 40 * math.cos(math.radians(a)), RING_V + 40 * math.sin(math.radians(a)))
+                                        for a in (65, 90, 115)]).close().extrude(PLATE_T + 2).val())
+sh = sh.cut(slot.intersect(ring_w(RING_U, RING_V, RING_ID / 2 + 0.3, RING_OD / 2 - 0.3, floor_w0 - 1, floor_w1 + 2)))
+# the vibration board screws flat to the underside of the flange (rigid, so the ticks reach the
+# knob): two M2 screws from below into bosses on top of the flange
+vib_cu, vib_cv = RING_U + VIB_OFF, RING_V
+vib_holes = [(vib_cu + VIB_HOLE_DY, vib_cv + sy * VIB_HOLE_DX) for sy in (-1, 1)]
+for hu, hv in vib_holes:
+    sh = sh.fuse(cyl_w(hu, hv, 3.0, floor_w0 - 4, floor_w0 + 0.01)).cut(cyl_w(hu, hv, SCREW_PILOT / 2, floor_w0 - 4.1, floor_w1 + 0.1))
 shroud = sh.clean()
 
 # ============================================================== diffuser (white)
@@ -313,20 +338,44 @@ leds = union(*leds)
 enc_body = box(RING_U - 6, RING_U + 6, plate_w1, plate_w1 + 6.5, RING_V - 6.25, RING_V + 6.25)
 enc_metal = union(cyl_w(RING_U, RING_V, 3.5, plate_w1 - 7, plate_w1),
                   cyl_w(RING_U, RING_V, 4.9, plate_w0 - 2, plate_w0),
-                  cyl_w(RING_U, RING_V, 3.0, plate_w1 - ENC_SHAFT_L, plate_w1 - 7))
+                  cyl_w(RING_U, RING_V, KNOB_BORE / 2, plate_w1 - ENC_SHAFT_L, plate_w1 - 7))  # (as pressed into the knob)
 enc_pcb = cyl_w(RING_U, RING_V, 13.0, plate_w1 + 6.5, plate_w1 + 8.1)
 enc_pins = union(*[box(RING_U - 5.08 + 2.54 * i - 0.32, RING_U - 5.08 + 2.54 * i + 0.32, plate_w1 + 8.1,
                        plate_w1 + 16.6, RING_V + 10.86, RING_V + 11.5) for i in range(5)])
 knob_w0 = -KNOB_LIFT
-knob = cyl_w(RING_U, RING_V, KNOB_D / 2, knob_w0 - KNOB_H, knob_w0).cut(cyl_w(RING_U, RING_V, 3.0, knob_w0 - KNOB_H + 2, knob_w0 + 1))
-knob_cap = cyl_w(RING_U, RING_V, KNOB_D / 2 - 1.5, knob_w0 - KNOB_H - 0.6, knob_w0 - KNOB_H)
+
+
+def make_knob():
+    """The knob, standing on its base at the origin: a 20 mm cylinder with a rounded top edge,
+    staggered thimble dimples round the side and a plain top."""
+    R = KNOB_D / 2
+    k = cq.Workplane("XY").circle(R).extrude(KNOB_H).faces(">Z").edges().fillet(2.0) \
+        .faces("<Z").edges().chamfer(0.4).val()
+    dimples = []
+    rows = np.arange(2.6, KNOB_H - 2.4, 1.9)
+    per_row = 28
+    for j, z in enumerate(rows):
+        for i in range(per_row):
+            a = 2 * math.pi * (i + 0.5 * (j % 2)) / per_row
+            dimples.append(cq.Solid.makeSphere(0.95, V((R + 0.35) * math.cos(a), (R + 0.35) * math.sin(a), z)))
+    k = k.cut(cq.Compound.makeCompound(dimples))
+    k = k.cut(cq.Solid.makeCylinder(KNOB_BORE / 2, KNOB_BORE_DEPTH, V(0, 0, -0.01)))
+    k = k.cut(cq.Solid.makeCone(KNOB_BORE / 2 + 0.5, KNOB_BORE / 2, 0.5, V(0, 0, -0.01)))   # lead-in
+    return k.clean()
+
+
+knob_part = make_knob()
+# into place: base 0.5 mm above the deck, top up (the local w axis points into the box)
+knob = knob_part.rotate(V(0, 0, 0), V(1, 0, 0), 90).translate(V(RING_U, knob_w0, RING_V))
 
 # vibration module (board parallel to the deck, under the shroud, motor underneath)
-vib_w0 = floor_w1 + 3
-vib_pcb = box(RING_U - VIB_W / 2, RING_U + VIB_W / 2, vib_w0, vib_w0 + VIB_T, vib_cv - VIB_H / 2, vib_cv + VIB_H / 2)
-for sx in (-1, 1):
-    vib_pcb = vib_pcb.cut(cyl_w(RING_U + sx * VIB_HOLE_DX, vib_cv - VIB_HOLE_DY, 1.5, vib_w0 - 1, vib_w0 + 3))
-vib_motor = cyl_w(RING_U, vib_cv + 3, VIB_MOTOR_D / 2, vib_w0 + VIB_T, vib_w0 + VIB_T + VIB_MOTOR_T)
+vib_w0 = floor_w1
+vib_pcb = box(vib_cu - VIB_H / 2, vib_cu + VIB_H / 2, vib_w0, vib_w0 + VIB_T, vib_cv - VIB_W / 2, vib_cv + VIB_W / 2)
+for hu, hv in vib_holes:
+    vib_pcb = vib_pcb.cut(cyl_w(hu, hv, 1.5, vib_w0 - 1, vib_w0 + 3))
+vib_motor = cyl_w(vib_cu - 3, vib_cv, VIB_MOTOR_D / 2, vib_w0 + VIB_T, vib_w0 + VIB_T + VIB_MOTOR_T)
+vib_pins = union(*[box(vib_cu + VIB_H / 2 - 1, vib_cu + VIB_H / 2 + 6, vib_w0 + VIB_T, vib_w0 + VIB_T + 0.64,
+                       vib_cv + k * 2.54 - 0.32, vib_cv + k * 2.54 + 0.32) for k in (-1, 0, 1)])
 
 # e-paper: glass panel + e-ink active area, and WeAct's board model
 panel = box(panel_u0, panel_u0 + PANEL_L, pcb_w0 - PANEL_T, pcb_w0,
@@ -365,7 +414,6 @@ asm.add(base, name="base", color=GREEN)
 asm.add(D(shroud), name="light_shroud", color=BLACK)
 asm.add(D(diffuser), name="diffuser", color=WHITE)
 asm.add(D(knob), name="knob", color=BLACK)
-asm.add(D(knob_cap), name="knob_cap", color=KNOB_BLUE)
 asm.add(D(led_ring_pcb), name="led_ring_pcb", color=PCB_BLACK)
 asm.add(D(leds), name="led_ring_leds", color=cq.Color(0.95, 0.95, 0.92))
 asm.add(D(enc_body), name="encoder_body", color=METAL)
@@ -374,6 +422,7 @@ asm.add(D(enc_pcb), name="encoder_pcb", color=PCB_BLUE)
 asm.add(D(enc_pins), name="encoder_pins", color=GOLD)
 asm.add(D(vib_pcb), name="vibration_pcb", color=PCB_BLACK)
 asm.add(D(vib_motor), name="vibration_motor", color=METAL)
+asm.add(D(vib_pins), name="vibration_pins", color=GOLD)
 asm.add(F(panel), name="epaper_glass", color=GLASS)
 asm.add(F(active), name="epaper_active_area", color=EINK)
 asm.add(F(cq.Compound.makeCompound(epd_pcb)), name="epaper_module_pcb", color=PCB_BLACK)
@@ -389,13 +438,34 @@ print("wrote", out, "(%.0f x %.0f x %.0f mm)" % (W, DEPTH, TOTAL_H))
 
 os.makedirs(os.path.join(HERE, "print"), exist_ok=True)
 # printed parts, each in a good printing orientation
-stl = lambda shape, name, tol=0.05: cq.exporters.export(cq.Workplane().add(shape), os.path.join(HERE, "print", name),
-                                                         tolerance=tol, angularTolerance=0.1)
-body_side = body.rotate(V(0, 0, 0), V(0, 1, 0), 90)   # on its side: the side profile flat on the bed
-bb = body_side.BoundingBox()
-stl(body_side.translate(V(-bb.xmin, -bb.ymin, -bb.zmin)), "body.stl")
+def stl(shape, name, tol=0.05, ang=0.1):
+    """Exports a printed part. OpenCascade can leave hairline cracks where three rounded edges
+    meet; if it does, the mesh is welded (points within 0.01, then 0.1 mm) so it's watertight."""
+    path = os.path.join(HERE, "print", name)
+    cq.exporters.export(cq.Workplane().add(shape), path, tolerance=tol, angularTolerance=ang)
+    try:
+        import trimesh
+    except ImportError:
+        return
+    m = trimesh.load(path)
+    for digits in (2, 1):
+        if m.is_watertight:
+            break
+        m.merge_vertices(digits_vertex=digits)
+        m.update_faces(m.nondegenerate_faces())
+        m.update_faces(m.unique_faces())
+        m.remove_unreferenced_vertices()
+        trimesh.repair.fill_holes(m)
+        trimesh.repair.fix_normals(m)
+    if abs(m.volume - shape.Volume()) > 0.01 * shape.Volume():
+        raise SystemExit(f"{name}: mesh repair changed the volume, check it")
+    m.export(path)
+stl(body, "body.stl")                                   # upright, open side down
+stl(knob_part.rotate(V(0, 0, 0), V(1, 0, 0), 180).translate(V(0, 0, KNOB_H)), "knob.stl", 0.02, 0.2)  # top down
 stl(base, "base.stl")
-stl(shroud.rotate(V(0, 0, 0), V(1, 0, 0), 90), "light_shroud.stl", 0.02)  # top lip on the bed
+shroud_flat = shroud.rotate(V(0, 0, 0), V(1, 0, 0), -90)   # flange on the bed: no supports needed
+bb = shroud_flat.BoundingBox()
+stl(shroud_flat.translate(V(-bb.xmin, -bb.ymin, -bb.zmin)), "light_shroud.stl", 0.02)
 stl(diffuser.rotate(V(0, 0, 0), V(1, 0, 0), 90), "diffuser.stl", 0.02)
 print("wrote print/*.stl")
 
