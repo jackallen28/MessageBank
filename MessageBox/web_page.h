@@ -97,6 +97,9 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 </div>
 <div class="hint">Fast updates while reading. Full refreshes happen at startup, when clearing the screen, and for setup, orientation changes or a requested full redraw. There is no refresh-count timer.</div>
 <label class="ck"><input id="krev" class="s" type="checkbox"> Reverse the knob (if clockwise scrolls up)</label>
+<label class="ck"><input id="epdwire" class="s" type="checkbox"> Screen BUSY and RESET are wired (BUSY to GPIO4, RES to GPIO8)</label>
+<div class="hint">Untick to run the screen with neither wire: tie the screen's RES to 3V3 and leave BUSY unconnected. Each update then takes a little longer (fixed waits). Restarts the box.</div>
+<div class="row"><div><label>Screen SPI speed</label><select id="epdspi" class="s"><option value="1">1 MHz (tested)</option><option value="4">4 MHz (faster refresh)</option><option value="10">10 MHz (fastest; short wires)</option></select></div><div></div></div>
 <div class="row"><div><label>Device name (for messagebox.local)</label><input id="name" class="s"></div>
 <div><label>Setup Wi-Fi password (8+ characters)</label><input id="appass" type="password" placeholder="(unchanged)"></div></div>
 <div class="hint">Changing Wi-Fi, the name, the time zone or the orientation restarts the box. Everything else applies straight away.</div>

@@ -8,8 +8,8 @@
 // Display reset owns GPIO8, which is shared with the onboard blue LED.
 // Keep the BOOT/GPIO9 pin clear of external connections.
 const int PIN_EPD_SCK = 10, PIN_EPD_MOSI = 6, PIN_EPD_CS = 7, PIN_EPD_DC = 5;
-const int PIN_EPD_RST = 8;    // Screen RES; do not tie it to 3V3.
-const int PIN_EPD_BUSY = 4;   // Screen BUSY feedback.
+const int PIN_EPD_RST = 8;    // Screen RES, when "Screen wiring" is wired (default). Not wired: tie RES to 3V3.
+const int PIN_EPD_BUSY = 4;   // Screen BUSY, when wired. Not wired: leave BUSY unconnected.
 const int PIN_ENC_A = 0;      // CLK / S1
 const int PIN_ENC_B = 1;      // DT  / S2
 const int PIN_ENC_SW = 21;    // KEY (the C3's TX pin: it chatters at boot, so don't hold the knob while plugging in)
@@ -17,8 +17,7 @@ const int PIN_LEDS = 2;       // ring DIN
 const int PIN_VIBE = 20;      // motor module IN
 
 const int NUM_LEDS = 12;
-const uint32_t EPD_SPI_HZ = 1000000;  // Proven 1 MHz setting from the working v4 test.
-const char *const FIRMWARE_VERSION = "MessageBox-main-v9";
+const char *const FIRMWARE_VERSION = "MessageBox-main-v10";
 const char *const AP_SSID = "MessageBox-Setup";
 const uint32_t LONG_PRESS_MS = 5000;  // hold the knob this long for the setup Wi-Fi
 const uint32_t READ_TIMEOUT_MS = 180000;  // reading with no knob use for 3 min: back to the envelope
@@ -61,6 +60,8 @@ struct Settings {
   // screen and knob
   uint8_t rotation = 1;        // 0 portrait, 1 landscape (as in the enclosure), 2 and 3 the same turned 180
   bool knobReverse = false;
+  bool epdWired = true;        // screen BUSY (GPIO4) and RESET (GPIO8) connected: the tested setup
+  uint8_t epdSpiMHz = 1;       // screen SPI clock: 1 (tested), 4 or 10 MHz
 } cfg;
 
 Preferences prefs;
@@ -120,6 +121,9 @@ void loadSettings() {
   cfg.ntfRemindMin = prefs.getUShort("nrem", cfg.ntfRemindMin);
   cfg.rotation = prefs.getUChar("rot", cfg.rotation);
   cfg.knobReverse = prefs.getBool("krev", cfg.knobReverse);
+  cfg.epdWired = prefs.getBool("epdwire", cfg.epdWired);
+  cfg.epdSpiMHz = prefs.getUChar("epdspi", cfg.epdSpiMHz);
+  if (cfg.epdSpiMHz != 1 && cfg.epdSpiMHz != 4 && cfg.epdSpiMHz != 10) cfg.epdSpiMHz = 1;
   prefs.end();
   if (cfg.pollSec < 20) cfg.pollSec = 20;
   if (cfg.ledStyle >= STYLE_COUNT) cfg.ledStyle = STYLE_COMET;
@@ -156,6 +160,8 @@ void saveSettings() {
   prefs.putUShort("nrem", cfg.ntfRemindMin);
   prefs.putUChar("rot", cfg.rotation);
   prefs.putBool("krev", cfg.knobReverse);
+  prefs.putBool("epdwire", cfg.epdWired);
+  prefs.putUChar("epdspi", cfg.epdSpiMHz);
   prefs.end();
 }
 

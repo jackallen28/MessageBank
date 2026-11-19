@@ -1,0 +1,9 @@
+{
+  "additionalFiles": "../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..",
+  "compiler.optimization_flags": "-Os",
+  "customBuildProperties": "upload.maximum_size=1769472",
+  "fqbn": "esp32:esp32:esp32c3:CDCOnBoot=cdc,PartitionScheme=custom,FlashSize=4M,FlashMode=dio,FlashFreq=40",
+  "hardwareFolders": "/root/.arduino15/packages/esp32/hardware/esp32/3.3.7,/root/.arduino15/packages/esp32/hardware/esp32/3.3.7",
+  "otherLibrariesFolders": "/root/Arduino/libraries",
+  "sketchLocation": "/home/user/jackallen/MessageBox/MessageBox"
+}

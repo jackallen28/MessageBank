@@ -1,0 +1,2 @@
+577f798fc1e5caf642853b3a07bc51336422e4564be5bed76002d9dfff861f21  MessageBox-main-v10-OTA.bin
+d607af1317b9c3c7d366b50f4025ac5d0ba73b391fde6bf322c24c635a0671e4  MessageBox-main-v10-USB-installer.bin

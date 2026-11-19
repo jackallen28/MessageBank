@@ -2,7 +2,9 @@
 // while the panel refreshes. The main loop describes what should be on screen (a View) and
 // calls screenShow(); the task draws the newest View it has, skipping any it couldn't get to.
 //
-// The display uses 1 MHz SPI, RESET on GPIO8 and BUSY on GPIO4. Routine
+// The display uses SPI (1 MHz by default, a setting), and RESET on GPIO8 and BUSY on GPIO4 when
+// "Screen wiring" is set to wired (the default, tested). Set to "not wired", the driver waits
+// fixed, generous times instead of reading BUSY, and RES must be tied to 3V3. Routine
 // reading and control changes use fast partial updates. Full refreshes happen
 // on initialization, clearing to blank, entering setup, rotation changes, or
 // an explicit full redraw/test pattern. No refresh-count cleanup is scheduled.
@@ -22,8 +24,11 @@
 #include "RefreshPolicy.h"
 
 #ifndef HOST_PREVIEW
-GxEPD2_BW<GxEPD2_370_GDEY037T03, GxEPD2_370_GDEY037T03::HEIGHT> epd(
-  GxEPD2_370_GDEY037T03(PIN_EPD_CS, PIN_EPD_DC, PIN_EPD_RST, PIN_EPD_BUSY));
+#include "MB_EPD370.h"
+// Created in screenBegin(), once the settings say whether BUSY and RESET are wired.
+typedef GxEPD2_BW<MB_EPD370, MB_EPD370::HEIGHT> EpdDisplay;
+EpdDisplay *epdDisplay = nullptr;
+#define epd (*epdDisplay)
 #endif
 
 enum FontId : uint8_t { F_REG9, F_BOLD9, F_REG12, F_BOLD12, F_BOLD18 };
@@ -465,9 +470,18 @@ void screenBegin() {
     logf("Screen initialization failed; Wi-Fi setup continues");
     return;
   }
-  pinMode(PIN_EPD_BUSY, INPUT_PULLUP);
+  const bool wired = cfg.epdWired;
+  if (wired) pinMode(PIN_EPD_BUSY, INPUT_PULLUP);
+  epdDisplay = new EpdDisplay(MB_EPD370(PIN_EPD_CS, PIN_EPD_DC, wired ? PIN_EPD_RST : -1, wired ? PIN_EPD_BUSY : -1));
+  if (!epdDisplay) {
+    logf("Not enough memory for the screen; Wi-Fi setup continues");
+    return;
+  }
+  const uint32_t spiHz = (uint32_t)cfg.epdSpiMHz * 1000000UL;
+  logf("Screen: %s, %u MHz SPI", wired ? "BUSY on GPIO4 + RESET on GPIO8" : "no BUSY/RESET wires (fixed timing)",
+       (unsigned)cfg.epdSpiMHz);
   delay(200);
-  epd.init(0, true, 50, false, SPI, SPISettings(EPD_SPI_HZ, MSBFIRST, SPI_MODE0));
+  epd.init(0, true, 50, false, SPI, SPISettings(spiHz, MSBFIRST, SPI_MODE0));
   epd.setFullWindow();
   if (xTaskCreate(screenTaskFn, "screen", 8192, nullptr, 1, &screenTask) != pdPASS) {
     screenTask = nullptr;

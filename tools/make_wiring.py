@@ -39,11 +39,13 @@ C = dict(BUSY="#7048e8", SCL="#1c7ed6", DC="#0ca678", SDA="#e64980", CS="#d9480f
 
 # ------------------------------------------------------------------ wires (drawn first, under the parts)
 # e-paper header pins (x = 1000)
-EP = {"BUSY": 190, "DC": 230, "SDA": 270, "CS": 310, "SCL": 350, "RES": 390, "GND": 430, "VCC": 470}
+EP = {"BUSY": 190, "DC": 230, "SDA": 270, "CS": 310, "RES": 350, "SCL": 390, "GND": 430, "VCC": 470}
 wire([(BX1, lp(0)), (800, lp(0)), (800, EP["DC"]), (1000, EP["DC"])], C["DC"])              # GPIO5 -> D/C
 wire([(BX1, lp(1)), (830, lp(1)), (830, EP["SDA"]), (1000, EP["SDA"])], C["SDA"])           # GPIO6 -> SDA
 wire([(BX1, lp(2)), (860, lp(2)), (860, EP["CS"]), (1000, EP["CS"])], C["CS"])              # GPIO7 -> CS
 wire([(BX1, lp(5)), (890, lp(5)), (890, EP["SCL"]), (1000, EP["SCL"])], C["SCL"])           # GPIO10 -> SCL
+wire([(BX1, lp(3)), (875, lp(3)), (875, EP["RES"]), (1000, EP["RES"])], C["RES"])           # GPIO8 -> RES
+wire([(BX0, lp(3)), (450, lp(3)), (450, EP["BUSY"]), (1000, EP["BUSY"])], C["BUSY"])        # GPIO4 -> BUSY
 # LED ring connector (x = 360)
 RG = {"5V": 250, "GND": 280, "DIN": 310}
 wire([(BX0, lp(5)), (390, lp(5)), (390, RG["DIN"]), (360, RG["DIN"])], C["DIN"])            # GPIO2 -> DIN
@@ -67,7 +69,7 @@ a(f'<rect x="{BX0}" y="{BY0}" width="{BX1 - BX0}" height="{BY1 - BY0}" rx="12" f
 a(f'<rect x="{(BX0 + BX1) / 2 - 34}" y="{BY0 - 14}" width="68" height="34" rx="8" fill="#adb5bd" stroke="#495057" stroke-width="2"/>')
 text((BX0 + BX1) / 2, BY0 + 8, "USB-C", 11, "middle", "bold", "#343a40")
 text((BX0 + BX1) / 2, BY1 + 26, "ESP32-C3 SuperMini (top view)", 15, "middle", "bold")
-text((BX0 + BX1) / 2, BY1 + 46, "middle pins free for the zip tie", 12, "middle", fill="var(--mute)")
+text((BX0 + BX1) / 2, BY1 + 46, "GPIO3 and GPIO9 stay free (zip tie)", 12, "middle", fill="var(--mute)")
 for i, n in enumerate(LEFT):
     a(f'<circle cx="{BX0 + 14}" cy="{lp(i)}" r="8" fill="#c9a227" stroke="#8a6d00" stroke-width="2"/>')
     a(f'<circle cx="{BX0 + 14}" cy="{lp(i)}" r="3" fill="#1f1f24"/>')
@@ -81,13 +83,11 @@ for i, n in enumerate(RIGHT):
 tag(BX0, lp(0), "5V", -1)
 tag(BX0, lp(1), "GND", -1)
 tag(BX0, lp(2), "3V3", -1)
-# the middle two pins on each side stay free: the zip tie goes round the board between them
-zy = (lp(3) + lp(4)) / 2
-a(f'<rect x="{BX0 - 14}" y="{zy - 4}" width="{BX1 - BX0 + 28}" height="8" rx="3" fill="#e9ecef" stroke="#868e96" stroke-width="1"/>')
-for i in (3, 4):
-    text(BX0 - 8, lp(i) + 5, "keep free", 12, "end", fill="var(--mute)")
-    text(BX1 + 8, lp(i) + 5, "keep free", 12, fill="var(--mute)")
-text(BX1 + 20, zy + 5, "← zip tie", 12, weight="bold", fill="#868e96")
+# GPIO3 and GPIO9 (the 5th pin from the USB end on each side) stay free: the zip tie goes over them
+for x0 in (BX0 + 4, BX1 - 76):
+    a(f'<rect x="{x0}" y="{lp(4) - 13}" width="72" height="26" rx="13" fill="none" stroke="#adb5bd" stroke-width="1.5" stroke-dasharray="4 3"/>')
+text(BX0 - 8, lp(4) + 5, "free (zip tie)", 12, "end", fill="var(--mute)")
+text(BX1 + 8, lp(4) + 5, "free (zip tie)", 12, fill="var(--mute)")
 
 # ------------------------------------------------------------------ e-paper
 a('<rect x="1010" y="150" width="340" height="360" rx="10" fill="var(--part)" stroke="var(--ink)" stroke-width="2"/>')
@@ -101,8 +101,6 @@ for n, y in EP.items():
     pin(1000, y)
     text(1020, y + 5, {"DC": "D/C"}.get(n, n), 13, weight="bold")
 tag(1000, EP["GND"], "GND", -1)
-tag(1000, EP["RES"], "3V3", -1)
-text(990, EP["BUSY"] + 5, "not connected", 12, "end", fill="var(--mute)")
 tag(1000, EP["VCC"], "3V3", -1)
 
 # ------------------------------------------------------------------ LED ring
@@ -168,6 +166,8 @@ wl(904, EP["DC"] - 7, "GPIO5 → D/C", C["DC"])
 wl(904, EP["SDA"] - 7, "GPIO6 → SDA", C["SDA"])
 wl(904, EP["CS"] - 7, "GPIO7 → CS", C["CS"])
 wl(904, EP["SCL"] - 7, "GPIO10 → SCL", C["SCL"])
+wl(904, EP["RES"] - 7, "GPIO8 → RES", C["RES"])
+wl(612, EP["BUSY"] - 7, "GPIO4 → BUSY", C["BUSY"])
 wl(398, lp(5) + 20, "GPIO2 → IN", C["DIN"])
 wl(372, EN["CLK"] + 18, "GPIO0 → S1", C["CLK"])
 wl(500, EN["DT"] - 7, "GPIO1 → S2", C["DT"])
@@ -192,7 +192,7 @@ notes = [
     "Power everything from the C3's USB-C. Keep LED brightness at or below 60 of 255 (the default): 12 LEDs at full white draw about 0.7 A.",
     "The encoder's + pin goes to 3V3. Its pull-up resistors would put 5 V on the C3's pins, and the C3 only takes 3.3 V.",
     "If the ring flickers or shows wrong colours, feed its 5V through a 1N4001 diode (4.3 V), so the C3's 3.3 V data counts as high.",
-    "E-paper RES goes to 3V3 and BUSY isn't connected, so GPIO3, GPIO4, GPIO8 and GPIO9 stay free for the zip tie round the board.",
+    "BUSY and RES are the tested wiring. To run without them: RES to 3V3, BUSY unconnected, and untick 'Screen BUSY and RESET are wired' on the setup page.",
     "GPIO21 is also the C3's TX pin and chatters while it boots, so don't hold the knob down while plugging the box in.",
 ]
 for k, n in enumerate(notes):

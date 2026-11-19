@@ -1,5 +1,5 @@
 /*
-  MessageBox - main firmware v9
+  MessageBox - main firmware v10
   ==========================
   A little box that shows messages from a friend or partner. They email a private Gmail
   inbox; the box reads it.
@@ -26,10 +26,11 @@
 
   Wiring (see ../wiring.svg and ../README.md):
     E-paper  VCC->3V3  GND->GND  SCL->GPIO10  SDA->GPIO6  CS->GPIO7  D/C->GPIO5  RES->GPIO8  BUSY->GPIO4
+             (or, with Screen wiring set to "not wired": RES->3V3, BUSY unconnected)
     Encoder  +->3V3 (not 5V!)  GND->GND  CLK(S1)->GPIO0  DT(S2)->GPIO1  SW(KEY)->GPIO21
     LED ring 5V->5V  GND->GND  DIN->330 ohm->GPIO2            (+ 470 uF across 5V/GND)
     Vibe     VCC->5V  GND->GND  IN->GPIO20
-    The screen uses GPIO8 and GPIO4. Leave BOOT/GPIO9 disconnected.
+    Leave BOOT/GPIO9 and GPIO3 unconnected: the zip tie in the case goes over those two pads.
 
   First start: the box opens its own Wi-Fi "MessageBox-Setup" (password "messagebox").
   Join it and open http://192.168.4.1 to test every part and enter the Wi-Fi and Gmail details.
@@ -70,12 +71,40 @@ String nowText() {
 // ---------------------------------------------------------------- rotary encoder and button
 
 EncoderCounter encoder;
-int32_t encoderClicks = 0;
+volatile int32_t encoderClicks = 0;
 
-// Use the polling decoder validated in the hardware tests. No encoder ISR
-// runs while Preferences/LittleFS writes temporarily disable the flash cache.
+// The polling decoder validated in the hardware tests (no interrupt, so flash writes can't
+// crash it), run every 1 ms in its own task so clicks aren't missed while loop() is busy
+// saving to flash, serving the web page or handing the screen a new picture.
+void encoderTaskFn(void *) {
+  TickType_t last = xTaskGetTickCount();
+  for (;;) {
+    int8_t d = encoder.update((digitalRead(PIN_ENC_A) << 1) | digitalRead(PIN_ENC_B));
+    if (d) encoderClicks = encoderClicks + d;
+    vTaskDelayUntil(&last, 1);
+  }
+}
+
 int32_t encPosition() {
-  return cfg.knobReverse ? -encoderClicks : encoderClicks;
+  int32_t c = encoderClicks;
+  return cfg.knobReverse ? -c : c;
+}
+
+// After a web update, the new firmware is only kept once it has run for 30 s with its web page
+// up. If it crashes or is restarted before that, the bootloader goes back to the old firmware.
+extern "C" bool verifyRollbackLater() { return true; }
+bool firmwareConfirmed = false;
+extern bool webStarted;
+
+void confirmFirmware() {
+  if (firmwareConfirmed || millis() < 30000 || !webStarted) return;
+  firmwareConfirmed = true;
+  esp_ota_img_states_t state;
+  const esp_partition_t *running = esp_ota_get_running_partition();
+  if (running && esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
+    esp_ota_mark_app_valid_cancel_rollback();
+    logf("Firmware update confirmed: it ran 30 s without problems");
+  }
 }
 
 bool btnDown = false;
@@ -332,7 +361,6 @@ void onPress() {
 void startAP(bool byUser);
 
 void knobLoop() {
-  encoderClicks += encoder.update((digitalRead(PIN_ENC_A) << 1) | digitalRead(PIN_ENC_B));
   bool raw = digitalRead(PIN_ENC_SW) == LOW;
   if (raw != btnDown && millis() - btnChange > 25) {
     btnDown = raw;
@@ -609,7 +637,8 @@ void handleStatus() {
   j += ",\"nms0\":" + String(cfg.ntfMsFirst) + ",\"nms1\":" + String(cfg.ntfMsLast);
   j += ",\"npow0\":" + String(cfg.ntfPowFirst) + ",\"npow1\":" + String(cfg.ntfPowLast);
   j += ",\"ngap\":" + String(cfg.ntfGap) + ",\"nrem\":" + String(cfg.ntfRemindMin);
-  j += ",\"rot\":" + String(cfg.rotation) + ",\"krev\":" + jb(cfg.knobReverse) + "}";
+  j += ",\"rot\":" + String(cfg.rotation) + ",\"krev\":" + jb(cfg.knobReverse);
+  j += ",\"epdwire\":" + jb(cfg.epdWired) + ",\"epdspi\":" + String(cfg.epdSpiMHz) + "}";
   FirmwareUpdateStatus update = firmwareUpdater.status();
   j += ",\"update\":{\"busy\":" + jb(update.busy) + ",\"restarting\":" + jb(update.restarting);
   j += ",\"written\":" + String(update.written) + ",\"total\":" + String(update.total);
@@ -718,9 +747,15 @@ void handleSettings() {
   cfg.ntfRemindMin = argNum("nrem", 0, 1440, cfg.ntfRemindMin);
   cfg.rotation = argNum("rot", 0, 3, cfg.rotation);
   cfg.knobReverse = argBool("krev", cfg.knobReverse);
+  cfg.epdWired = argBool("epdwire", cfg.epdWired);
+  {
+    long mhz = argNum("epdspi", 1, 10, cfg.epdSpiMHz);
+    cfg.epdSpiMHz = mhz >= 10 ? 10 : (mhz >= 4 ? 4 : 1);
+  }
   saveSettings();
   bool restart = cfg.ssid != old.ssid || cfg.wifiPass != old.wifiPass || cfg.name != old.name ||
-                 cfg.apPass != old.apPass || cfg.tz != old.tz || cfg.rotation != old.rotation;
+                 cfg.apPass != old.apPass || cfg.tz != old.tz || cfg.rotation != old.rotation ||
+                 cfg.epdWired != old.epdWired || cfg.epdSpiMHz != old.epdSpiMHz;
   if (restart) {
     logf("Settings saved, restarting");
     sendText("Saved. Restarting - if the home Wi-Fi works, the setup Wi-Fi closes.");
@@ -880,6 +915,7 @@ void setup() {
   pinMode(PIN_ENC_B, INPUT_PULLUP);
   pinMode(PIN_ENC_SW, INPUT_PULLUP);
   encoder.begin((digitalRead(PIN_ENC_A) << 1) | digitalRead(PIN_ENC_B));
+  if (xTaskCreate(encoderTaskFn, "knob", 2048, nullptr, 3, nullptr) != pdPASS) logf("Could not start the knob task");
 
   logf("Loading settings");
   loadSettings();
@@ -921,6 +957,7 @@ void loop() {
   ledsLoop();
   wifiLoop();
   drainInbox();
+  confirmFirmware();
 
   uint32_t now = millis();
   switch (ui) {

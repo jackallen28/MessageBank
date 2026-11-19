@@ -43,13 +43,12 @@ The firmware is built around that:
   leaves. They happen when waking from blank, when going blank, and after *Clean refresh after
   this many fast ones* (default 10). Even then, they only happen when a new message opens,
   never in the middle of scrolling.
-- **Saving power:** the panel's high voltage switches off 2 s after the last change, and the
-  panel sleeps when blank.
+- **Saving power:** the driver switches the panel's high voltage off after every update.
 
-If long jumper wires give a garbled picture, lower `EPD_SPI_HZ` in `config.h` to 4000000.
-
-The e-paper's BUSY line isn't wired (to keep the middle pins free), so the firmware waits the
-driver's fixed time for each refresh: 0.35 s for a fast one and 1.5 s for a full one.
+Firmware v10 refresh policy (from v9): everything routine is a fast refresh. A full refresh
+happens only when the screen clears to blank, for setup, on rotation changes and for the test
+pattern. The screen SPI speed is a setting (1 MHz tested, 4 or 10 MHz faster). See
+[`firmware/README.md`](firmware/README.md).
 
 ## Parts
 
@@ -74,8 +73,8 @@ driver's fixed time for each refresh: 0.35 s for a fast one and 1.5 s for a full
 | E-paper **SDA** (data) | **GPIO6** | |
 | E-paper **CS** | **GPIO7** | |
 | E-paper **D/C** | **GPIO5** | |
-| E-paper **RES** | C3 **3V3** | Tied high: no wire to a GPIO |
-| E-paper **BUSY** | not connected | The firmware waits the panel's fixed refresh time instead |
+| E-paper **RES** | **GPIO8** | Tested. Optional: see [firmware/README.md](firmware/README.md) |
+| E-paper **BUSY** | **GPIO4** | Tested. Optional: see [firmware/README.md](firmware/README.md) |
 | Ring **5V** | C3 **5V** | 470 µF across the ring's 5V and GND (+ leg to 5V) |
 | Ring **GND** | C3 **GND** | |
 | Ring **IN** (DIN) | 330 Ω → **GPIO2** | Leave the ring's OUT unconnected |
@@ -88,10 +87,9 @@ driver's fixed time for each refresh: 0.35 s for a fast one and 1.5 s for a full
 | Vibration **GND** | C3 **GND** | |
 | Vibration **IN** | **GPIO20** | |
 
-**Keep the middle two pins on each side free: GPIO4 and GPIO3, GPIO8 and GPIO9.** A 2 mm zip tie
-goes round the middle of the board between them to hold it in the case. (GPIO8 also drives the
-C3's own blue LED, which lights while Gmail is being checked.) Solder jumper wires straight to
-the pins you use; there's no need for header pins.
+**Leave GPIO3 and GPIO9 unconnected** (the 5th pin from the USB end on each side). The case's
+2 mm zip tie goes over those two pads, and GPIO9 is also the BOOT pin. Solder jumper wires
+straight to the pins you use; there's no need for header pins.
 
 Things to know:
 
@@ -106,24 +104,33 @@ Things to know:
 - The e-paper uses the C3's hardware SPI on GPIO10 (clock) and GPIO6 (data).
 - **GPIO21 is also the C3's TX pin** and chatters while it boots. Don't hold the knob down while
   plugging the box in.
-- On the encoder, if one click moves two messages, set `ENC_STEPS_PER_DETENT` to 2 at the top
-  of the sketch.
+- On the encoder, if one click moves two messages, change the two `4`s in
+  `MessageBox/EncoderCounter.h` (edges per click) to `2`.
 
 ## Build and flash
 
-1. Arduino IDE 2, then **Boards Manager**, then install **esp32 by Espressif**, version 3.x.
-2. **Library Manager**, then install **GxEPD2**, **Adafruit GFX Library** and
-   **Adafruit NeoPixel**.
-3. Open `MessageBox/MessageBox.ino`. Under **Tools**, set:
-   - Board: **ESP32C3 Dev Module**
-   - **USB CDC On Boot: Enabled** (otherwise the Serial Monitor stays blank)
-   - Partition Scheme: **Huge APP (3MB No OTA/1MB SPIFFS)**, for room to grow
-4. Upload. If no port shows, hold **BOOT** while plugging the C3 in, upload, then press **RST**.
-5. Open the **Serial Monitor at 115200**. Everything the box does is logged there and on the web
-   page.
+**Ready-made images** are in [`firmware/`](firmware/):
 
-The sketch compiles with esp32 3.0.7, GxEPD2 1.6, Adafruit GFX 1.13 and NeoPixel 1.15: it uses
-1.3 MB of flash and 53 KB of RAM.
+- **Over USB at 0x0:** flash `MessageBox-main-v10-USB-installer.bin` with Espressif's browser
+  flasher (DIO, 40 MHz, 4 MB). This erases settings and messages.
+- **From the device page's Firmware update:** use `MessageBox-main-v10-OTA.bin` from a GitHub
+  release. This keeps settings and messages.
+
+[`firmware/README.md`](firmware/README.md) has the steps, a test checklist and the review of v9.
+
+**Building it yourself:** Arduino-ESP32 **3.3.7**, GxEPD2 1.6.9, Adafruit GFX 1.13.0, Adafruit
+BusIO 1.17.4 and Adafruit NeoPixel 1.15.5. The sketch has its own OTA partition table
+(`partitions.csv`):
+
+```sh
+arduino-cli compile \
+  --fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc,PartitionScheme=custom,FlashSize=4M,FlashMode=dio,FlashFreq=40 \
+  --build-property upload.maximum_size=1769472 \
+  --output-dir output MessageBox
+```
+
+`output/MessageBox.ino.merged.bin` is the USB installer, and `output/MessageBox.ino.bin` is the
+OTA image. The Serial Monitor runs at 115200.
 
 ## Test it (setup Wi-Fi)
 
