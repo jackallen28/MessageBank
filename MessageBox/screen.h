@@ -2,12 +2,11 @@
 // while the panel refreshes. The main loop describes what should be on screen (a View) and
 // calls screenShow(); the task draws the newest View it has, skipping any it couldn't get to.
 //
-// Speed: the whole picture lives in RAM (12.5 KB) and is sent in one go at 10 MHz SPI. Every
-// change is a fast partial refresh (~0.35 s on this panel). A full refresh (~1 s, clears
-// ghosting) happens only when waking from blank, after cfg.fullEvery fast ones (and then only
-// at a "clean" moment like a new message, never in the middle of scrolling), and when going
-// blank. Between refreshes the panel's high voltage is switched off after 2 s, and it sleeps
-// when blank.
+// The display uses 1 MHz SPI, RESET on GPIO8 and BUSY on GPIO4. Routine
+// reading and control changes use fast partial updates. Full refreshes happen
+// on initialization, clearing to blank, entering setup, rotation changes, or
+// an explicit full redraw/test pattern. No refresh-count cleanup is scheduled.
+// Keep controller RAM available while blank; do not hibernate between sessions.
 #pragma once
 #include <vector>
 #ifndef HOST_PREVIEW  // (HOST_PREVIEW: tools/preview_screens.cpp draws these screens on a PC)
@@ -20,6 +19,7 @@
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansBold18pt7b.h>
 #include "config.h"
+#include "RefreshPolicy.h"
 
 #ifndef HOST_PREVIEW
 GxEPD2_BW<GxEPD2_370_GDEY037T03, GxEPD2_370_GDEY037T03::HEIGHT> epd(
@@ -46,7 +46,6 @@ struct View {
   bool savedList = false;   // reading saved messages (not new ones)
   int8_t choice = 0;        // decide: -1 delete, +1 save, 0 not chosen yet
   String text;              // setup/text screens
-  bool cleanOK = false;     // a full refresh is allowed now if one is due
 };
 
 // ---------------------------------------------------------------- sizes and text layout
@@ -257,7 +256,6 @@ void drawEnvelopeScreen(const View &v, bool happy) {
   } else {
     int ty = oy + eh + (land ? 34 : 56);
     printCentered(ty, "All read!", F_BOLD18);
-    printCentered(ty + (land ? 22 : 32), "see you soon <3", F_REG12);
   }
 }
 
@@ -379,60 +377,83 @@ SemaphoreHandle_t viewLock;
 TaskHandle_t screenTask;
 View pending;
 bool pendingDirty = false;
-bool forceFullNext = false;
-volatile uint32_t lastRefreshMs = 0;  // how long the last refresh took (shown on the web page)
+bool pendingForceFull = false;
+volatile uint32_t lastRefreshMs = 0;
 volatile uint32_t refreshCount = 0;
+volatile uint32_t fullRefreshCount = 0;
+volatile uint32_t partialRefreshCount = 0;
+volatile bool lastRefreshFull = false;
+
+DisplayPage pageKind(Screen screen) {
+  if (screen == SCR_BLANK) return DisplayPage::Blank;
+  if (screen == SCR_SETUP) return DisplayPage::Setup;
+  if (screen == SCR_PATTERN) return DisplayPage::Pattern;
+  return DisplayPage::Content;
+}
 
 void screenShow(const View &v, bool forceFull = false) {
+  if (!screenTask || !viewLock) return;
   xSemaphoreTake(viewLock, portMAX_DELAY);
   pending = v;
   pendingDirty = true;
-  if (forceFull) forceFullNext = true;
+  // This intent belongs to the newest queued view. A superseded diagnostic
+  // frame must not force a full flash on a later routine reading frame.
+  pendingForceFull = forceFull;
   xSemaphoreGive(viewLock);
   xTaskNotifyGive(screenTask);
 }
 
 void screenTaskFn(void *) {
-  bool asleep = true;   // the panel's memory doesn't hold the picture: the next update must be full
-  bool powered = false;
-  int fastCount = 0;
+  RefreshPolicy policy;
+  Screen lastScreen = SCR_BLANK;
+  String lastFrom;
+  int lastPos = 0, lastTotal = 0;
+  bool lastSavedList = false;
   View v;
   for (;;) {
-    // wait for work; after 2 s idle, switch the panel's high voltage off
-    if (!ulTaskNotifyTake(pdTRUE, powered ? pdMS_TO_TICKS(2000) : portMAX_DELAY)) {
-      if (powered) { epd.powerOff(); powered = false; }
-      continue;
-    }
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     for (;;) {
-      bool full;
+      bool requestedFull;
       xSemaphoreTake(viewLock, portMAX_DELAY);
       if (!pendingDirty) { xSemaphoreGive(viewLock); break; }
       v = pending;
       pendingDirty = false;
-      full = forceFullNext;
-      forceFullNext = false;
+      requestedFull = pendingForceFull;
+      pendingForceFull = false;
       xSemaphoreGive(viewLock);
 
-      uint32_t t0 = millis();
+      const uint8_t rotation = cfg.rotation;
+      const DisplayPage page = pageKind(v.scr);
+      const RefreshMode mode = policy.plan(page, requestedFull, rotation);
+      if (mode == RefreshMode::Skip) continue;
+      const bool sameHeader = v.scr == lastScreen &&
+          (v.scr == SCR_READ || v.scr == SCR_DECIDE) &&
+          v.from == lastFrom && v.pos == lastPos && v.total == lastTotal &&
+          v.savedList == lastSavedList;
+      const uint32_t t0 = millis();
       drawView(v);
-      if (v.scr == SCR_BLANK || v.scr == SCR_SETUP || v.scr == SCR_PATTERN) full = true;
-      if (asleep) full = true;
-      if (!full && fastCount >= cfg.fullEvery && v.cleanOK) full = true;
-      if (full) {
-        epd.display(false);  // full refresh: clean, ~1 s
-        fastCount = 0;
+      if (mode == RefreshMode::Full) {
+        epd.display(false);
+        fullRefreshCount = fullRefreshCount + 1;
+      } else if (sameHeader) {
+        // Start at y=24 to include the bottom of the 30px header. All
+        // dimensions remain byte-aligned in both portrait and landscape.
+        epd.displayWindow(0, 24, epd.width(), epd.height() - 24);
+        partialRefreshCount = partialRefreshCount + 1;
       } else {
-        epd.display(true);   // fast partial refresh, ~0.35 s
-        fastCount++;
+        epd.display(true);  // Fast waveform even when the whole view changes.
+        partialRefreshCount = partialRefreshCount + 1;
       }
-      powered = !full;       // display(false) powers off by itself
-      asleep = false;
-      if (v.scr == SCR_BLANK) {
-        epd.hibernate();     // blank and asleep: almost no power, nothing shown
-        asleep = true;
-        powered = false;
-      }
+      // The driver powers the panel's high voltage off after each refresh.
+      // Retain controller RAM while blank so the next arrival stays partial.
+      policy.commit(page, rotation);
+      lastScreen = v.scr;
+      lastFrom = v.from;
+      lastPos = v.pos;
+      lastTotal = v.total;
+      lastSavedList = v.savedList;
       lastRefreshMs = millis() - t0;
+      lastRefreshFull = mode == RefreshMode::Full;
       refreshCount = refreshCount + 1;
     }
   }
@@ -440,9 +461,17 @@ void screenTaskFn(void *) {
 
 void screenBegin() {
   viewLock = xSemaphoreCreateMutex();
-  SPI.begin(PIN_EPD_SCK, -1, PIN_EPD_MOSI, PIN_EPD_CS);
-  epd.init(0, true, 2, false, SPI, SPISettings(EPD_SPI_HZ, MSBFIRST, SPI_MODE0));
+  if (!viewLock || !SPI.begin(PIN_EPD_SCK, -1, PIN_EPD_MOSI, PIN_EPD_CS)) {
+    logf("Screen initialization failed; Wi-Fi setup continues");
+    return;
+  }
+  pinMode(PIN_EPD_BUSY, INPUT_PULLUP);
+  delay(200);
+  epd.init(0, true, 50, false, SPI, SPISettings(EPD_SPI_HZ, MSBFIRST, SPI_MODE0));
   epd.setFullWindow();
-  xTaskCreate(screenTaskFn, "screen", 8192, nullptr, 2, &screenTask);
+  if (xTaskCreate(screenTaskFn, "screen", 8192, nullptr, 1, &screenTask) != pdPASS) {
+    screenTask = nullptr;
+    logf("Screen task allocation failed; Wi-Fi setup continues");
+  }
 }
 #endif  // HOST_PREVIEW

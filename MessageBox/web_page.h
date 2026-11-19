@@ -94,7 +94,8 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 
 <section><h2>5. Screen and knob</h2>
 <div class="row"><div><label>Screen orientation</label><select id="rot" class="s"><option value="0">Portrait</option><option value="1">Landscape</option><option value="2">Portrait, flipped</option><option value="3">Landscape, flipped</option></select></div>
-<div><label>Clean (full) refresh after this many fast ones</label><input id="fullev" class="s" type="number" min="1" max="50"></div></div>
+</div>
+<div class="hint">Fast updates while reading. Full refreshes happen at startup, when clearing the screen, and for setup, orientation changes or a requested full redraw. There is no refresh-count timer.</div>
 <label class="ck"><input id="krev" class="s" type="checkbox"> Reverse the knob (if clockwise scrolls up)</label>
 <div class="row"><div><label>Device name (for messagebox.local)</label><input id="name" class="s"></div>
 <div><label>Setup Wi-Fi password (8+ characters)</label><input id="appass" type="password" placeholder="(unchanged)"></div></div>
@@ -122,6 +123,15 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 
 <section><h2>Log</h2><pre id="log"></pre></section>
 
+<section><h2>Firmware update</h2>
+<label>Public GitHub firmware download link</label>
+<input id="fwurl" type="url" placeholder="https://github.com/owner/repo/releases/download/version/MessageBox-main-ota.bin">
+<button id="fwinstall" class="pri" onclick="installFirmware()" disabled>Install and restart</button>
+<progress id="fwprogress" max="100" value="0" style="width:100%;margin-top:10px"></progress>
+<div id="fwstate" class="hint">Connect home Wi-Fi to install an update.</div>
+<div class="hint">Use the application OTA .bin for this ESP32-C3. Upload that file to a public GitHub release, then paste its download link here. The USB installer is for flashing over USB. Wi-Fi and saved messages are retained by an OTA update.</div>
+</section>
+
 <section><h2>Maintenance</h2>
 <button onclick="post('/api/leavesetup',{})">Leave setup mode</button>
 <button onclick="if(confirm('Restart the device?'))post('/api/reboot',{})">Restart</button>
@@ -136,7 +146,8 @@ function post(url,data){return fetch(url,{method:'POST',body:new URLSearchParams
 function form(){const d={};document.querySelectorAll('.s').forEach(e=>d[e.id]=e.type=='checkbox'?(e.checked?'1':'0'):e.value);return d}
 function test(what,extra){post('/api/test',Object.assign(form(),{what},extra||{}))}
 function save(){const d=form();for(const k of['wpass','gpass','appass'])d[k]=v(k);post('/api/settings',d).then(()=>{loaded=false;for(const k of['wpass','gpass','appass'])$(k).value=''})}
-let loaded=false;
+let loaded=false,firmwareToken='';
+function installFirmware(){const url=v('fwurl').trim();if(!url){toast('Paste a GitHub application firmware link first');return}post('/api/update',{url,token:firmwareToken})}
 function fill(s){
   document.querySelectorAll('.s').forEach(e=>{if(!(e.id in s))return;if(e.type=='checkbox')e.checked=s[e.id];else e.value=s[e.id]});
   $('wpass').placeholder=s.hasWifiPass?'(saved - leave empty to keep)':'(none saved)';
@@ -163,10 +174,15 @@ function tick(){fetch('/api/status').then(r=>r.json()).then(s=>{
   $('sub').textContent=s.setup?'Setup mode - Wi-Fi '+s.apSsid+' is on':'Online at '+s.ip;
   const wifi=s.staOk?'<span class="ok">connected</span> to '+esc(s.staSsid)+' ('+s.rssi+' dBm), '+s.ip:(s.settings.ssid?'<span class="bad">not connected</span> ('+esc(s.staState)+')':'not set up yet');
   const mail=s.mail.busy?'checking...':(s.mail.ok===null?'not checked yet':(s.mail.ok?'<span class="ok">OK</span>':'<span class="bad">'+esc(s.mail.error)+'</span>')+(s.mail.ago>=0?', '+s.mail.ago+' s ago':''));
-  $('kv').innerHTML='<b>Wi-Fi</b><span>'+wifi+'</span><b>Gmail</b><span>'+mail+'</span><b>Box</b><span>'+esc(s.ui)+'</span><b>Messages</b><span>'+s.newCount+' new, '+s.savedCount+' saved</span><b>Screen</b><span>last refresh '+s.refreshMs+' ms ('+s.refreshes+' so far)</span><b>Time</b><span>'+esc(s.time)+'</span><b>Device</b><span>up '+s.uptime+' s, '+s.heap+' bytes free</span>';
+  $('kv').innerHTML='<b>Wi-Fi</b><span>'+wifi+'</span><b>Gmail</b><span>'+mail+'</span><b>Box</b><span>'+esc(s.ui)+'</span><b>Messages</b><span>'+s.newCount+' new, '+s.savedCount+' saved</span><b>Screen</b><span>last '+(s.lastRefreshFull?'full':'fast')+' refresh '+s.refreshMs+' ms ('+s.fullRefreshes+' full, '+s.partialRefreshes+' fast)</span><b>Time</b><span>'+esc(s.time)+'</span><b>Device</b><span>'+esc(s.firmware)+'; up '+s.uptime+' s, '+s.heap+' bytes free</span>';
   $('encpos').textContent=s.enc;$('dial').style.transform='rotate('+(s.enc*30)+'deg)';
   $('btn').className='dot'+(s.btn?' on':'');$('presses').textContent=s.presses+' press(es)';
   $('log').textContent=s.log;
+  firmwareToken=s.update.token;
+  $('fwinstall').disabled=!s.staOk||s.update.busy||s.update.restarting;
+  const percent=s.update.total?Math.floor(s.update.written*100/s.update.total):0;
+  $('fwprogress').value=percent;
+  $('fwstate').textContent=s.update.message+(s.update.total?' ('+percent+'%)':'');
   const c=s.newCount+'/'+s.savedCount;if(c!=lastCounts){lastCounts=c;loadMsgs()}
 }).catch(()=>{$('sub').textContent='Device not answering...'}).finally(()=>setTimeout(tick,1000))}
 tick();

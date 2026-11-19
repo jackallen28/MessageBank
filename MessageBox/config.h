@@ -5,26 +5,28 @@
 
 // ---------------------------------------------------------------- pins
 
-// The middle two pins on each side of the SuperMini (GPIO4, GPIO3 and GPIO8, GPIO9) are kept free,
-// so a zip tie can go round the middle of the board.
+// Display reset owns GPIO8, which is shared with the onboard blue LED.
+// Keep the BOOT/GPIO9 pin clear of external connections.
 const int PIN_EPD_SCK = 10, PIN_EPD_MOSI = 6, PIN_EPD_CS = 7, PIN_EPD_DC = 5;
-const int PIN_EPD_RST = -1;   // RES is tied to 3V3 on the module (no wire to the C3)
-const int PIN_EPD_BUSY = -1;  // BUSY not connected: the driver waits the panel's fixed refresh time
+const int PIN_EPD_RST = 8;    // Screen RES; do not tie it to 3V3.
+const int PIN_EPD_BUSY = 4;   // Screen BUSY feedback.
 const int PIN_ENC_A = 0;      // CLK / S1
 const int PIN_ENC_B = 1;      // DT  / S2
 const int PIN_ENC_SW = 21;    // KEY (the C3's TX pin: it chatters at boot, so don't hold the knob while plugging in)
 const int PIN_LEDS = 2;       // ring DIN
 const int PIN_VIBE = 20;      // motor module IN
-const int PIN_BOARD_LED = 8;  // blue LED on the SuperMini, on when LOW
 
 const int NUM_LEDS = 12;
-const int ENC_STEPS_PER_DETENT = 4;   // EC11 knobs give 4 steps per click; try 2 if one click moves two
-const uint32_t EPD_SPI_HZ = 10000000; // 10 MHz; drop to 4000000 if long jumper wires give a garbled picture
+const uint32_t EPD_SPI_HZ = 1000000;  // Proven 1 MHz setting from the working v4 test.
+const char *const FIRMWARE_VERSION = "MessageBox-main-v9";
 const char *const AP_SSID = "MessageBox-Setup";
 const uint32_t LONG_PRESS_MS = 5000;  // hold the knob this long for the setup Wi-Fi
 const uint32_t READ_TIMEOUT_MS = 180000;  // reading with no knob use for 3 min: back to the envelope
 const int SCROLL_LINES_PER_CLICK = 2;
 const int MAX_MSGS = 40;
+
+// Arduino generates sketch prototypes before .ino-local type declarations.
+enum Ui : uint8_t { UI_IDLE, UI_ENVELOPE, UI_READ, UI_DECIDE, UI_HAPPY, UI_SETUP };
 
 // ---------------------------------------------------------------- settings
 
@@ -58,7 +60,6 @@ struct Settings {
   uint16_t ntfRemindMin = 0;                    // buzz again every N minutes while unread (0 = off)
   // screen and knob
   uint8_t rotation = 1;        // 0 portrait, 1 landscape (as in the enclosure), 2 and 3 the same turned 180
-  uint8_t fullEvery = 10;      // a full (clean) refresh after this many fast ones
   bool knobReverse = false;
 } cfg;
 
@@ -118,7 +119,6 @@ void loadSettings() {
   cfg.ntfGap = prefs.getUShort("ngap", cfg.ntfGap);
   cfg.ntfRemindMin = prefs.getUShort("nrem", cfg.ntfRemindMin);
   cfg.rotation = prefs.getUChar("rot", cfg.rotation);
-  cfg.fullEvery = prefs.getUChar("fullev", cfg.fullEvery);
   cfg.knobReverse = prefs.getBool("krev", cfg.knobReverse);
   prefs.end();
   if (cfg.pollSec < 20) cfg.pollSec = 20;
@@ -155,7 +155,6 @@ void saveSettings() {
   prefs.putUShort("ngap", cfg.ntfGap);
   prefs.putUShort("nrem", cfg.ntfRemindMin);
   prefs.putUChar("rot", cfg.rotation);
-  prefs.putUChar("fullev", cfg.fullEvery);
   prefs.putBool("krev", cfg.knobReverse);
   prefs.end();
 }

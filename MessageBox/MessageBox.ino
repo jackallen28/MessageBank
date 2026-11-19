@@ -1,5 +1,5 @@
 /*
-  MessageBox - test firmware
+  MessageBox - main firmware v9
   ==========================
   A little box that shows messages from a friend or partner. They email a private Gmail
   inbox; the box reads it.
@@ -19,17 +19,17 @@
   Every click and press of the knob gives a small haptic tick (can be turned off).
 
   Board:  ESP32-C3 SuperMini (Arduino: "ESP32C3 Dev Module", USB CDC On Boot: Enabled,
-          Partition Scheme: Huge APP)
+          Partition Scheme: custom OTA (partitions.csv))
   Parts:  WeAct 3.7" e-paper 240x416 (GDEY037T03), WS2812B 12-LED ring, EC11/KY-040 rotary
           encoder with push button, PWM coin vibration motor module.
   Libraries (Library Manager): GxEPD2, Adafruit GFX Library, Adafruit NeoPixel.
 
   Wiring (see ../wiring.svg and ../README.md):
-    E-paper  VCC->3V3  GND->GND  SCL->GPIO10  SDA->GPIO6  CS->GPIO7  D/C->GPIO5  RES->3V3  BUSY not connected
+    E-paper  VCC->3V3  GND->GND  SCL->GPIO10  SDA->GPIO6  CS->GPIO7  D/C->GPIO5  RES->GPIO8  BUSY->GPIO4
     Encoder  +->3V3 (not 5V!)  GND->GND  CLK(S1)->GPIO0  DT(S2)->GPIO1  SW(KEY)->GPIO21
     LED ring 5V->5V  GND->GND  DIN->330 ohm->GPIO2            (+ 470 uF across 5V/GND)
     Vibe     VCC->5V  GND->GND  IN->GPIO20
-    Keep GPIO4, GPIO3, GPIO8 and GPIO9 (the middle two pins on each side) free for the zip tie.
+    The screen uses GPIO8 and GPIO4. Leave BOOT/GPIO9 disconnected.
 
   First start: the box opens its own Wi-Fi "MessageBox-Setup" (password "messagebox").
   Join it and open http://192.168.4.1 to test every part and enter the Wi-Fi and Gmail details.
@@ -44,14 +44,20 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
+#include <esp_system.h>
 #include <time.h>
 #include "config.h"
+#include "EncoderCounter.h"
 #include "imap.h"
 #include "haptics.h"
 #include "leds.h"
 #include "store.h"
 #include "screen.h"
 #include "web_page.h"
+#include "firmware_update.h"
+
+FirmwareUpdater firmwareUpdater;
+SemaphoreHandle_t networkOperationLock;
 
 String nowText() {
   struct tm t;
@@ -63,22 +69,13 @@ String nowText() {
 
 // ---------------------------------------------------------------- rotary encoder and button
 
-volatile int32_t encRaw = 0;
-volatile uint8_t encState = 0;
+EncoderCounter encoder;
+int32_t encoderClicks = 0;
 
-void IRAM_ATTR encISR() {
-  static const int8_t table[16] = { 0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0 };
-  encState = ((encState << 2) | (digitalRead(PIN_ENC_A) << 1) | digitalRead(PIN_ENC_B)) & 0x0F;
-  encRaw = encRaw + table[encState];
-}
-
-// Clicks turned since boot; positive = clockwise.
+// Use the polling decoder validated in the hardware tests. No encoder ISR
+// runs while Preferences/LittleFS writes temporarily disable the flash cache.
 int32_t encPosition() {
-  noInterrupts();
-  int32_t r = encRaw;
-  interrupts();
-  int32_t p = r / ENC_STEPS_PER_DETENT;
-  return cfg.knobReverse ? -p : p;
+  return cfg.knobReverse ? -encoderClicks : encoderClicks;
 }
 
 bool btnDown = false;
@@ -87,7 +84,6 @@ bool longFired = false;
 
 // ---------------------------------------------------------------- what the box is doing
 
-enum Ui : uint8_t { UI_IDLE, UI_ENVELOPE, UI_READ, UI_DECIDE, UI_HAPPY, UI_SETUP };
 const char *const UI_NAMES[] = { "waiting (blank)", "new message envelope", "reading", "keep or delete", "all read", "setup" };
 Ui ui = UI_IDLE;
 
@@ -136,9 +132,8 @@ String setupText() {
 }
 
 // Sends the screen for the current state to the drawing task.
-void showUi(bool clean = false, bool forceFull = false) {
+void showUi(bool forceFull = false) {
   View v;
-  v.cleanOK = clean;
   switch (ui) {
     case UI_IDLE: v.scr = SCR_BLANK; break;
     case UI_ENVELOPE: v.scr = SCR_ENVELOPE; v.count = countState(MSG_NEW); break;
@@ -171,17 +166,17 @@ void showUi(bool clean = false, bool forceFull = false) {
   screenShow(v, forceFull);
 }
 
-void setUi(Ui u, bool clean = false) {
+void setUi(Ui u) {
   ui = u;
   lastInput = millis();
   ringForState();
-  showUi(clean);
+  showUi();
 }
 
 void enterEnvelope() {
   ringLookFromSettings();
   notifyAt = lastRemind = millis();
-  setUi(UI_ENVELOPE, true);
+  setUi(UI_ENVELOPE);
 }
 
 void goIdle(bool powerDown) {
@@ -190,26 +185,26 @@ void goIdle(bool powerDown) {
     ui = UI_IDLE;
     choiceGlow = 0;
     ringSet(RING_POWERDOWN, cfg.color1);  // the ring goes out LED by LED
-    showUi(true);
+    showUi();
     return;
   }
-  setUi(UI_IDLE, true);
+  setUi(UI_IDLE);
 }
 
-void openMessage(int idx, bool saved, bool clean) {
+void openMessage(int idx, bool saved) {
   const Message &m = store[idx];
   curId = m.id;
   savedList = saved;
   curLines = layoutMessage(m.subject, m.body);
   scrollPos = 0;
   choice = 0;
-  setUi(UI_READ, clean);
+  setUi(UI_READ);
   logf("Reading %s message %lu from %s", saved ? "saved" : "new", (unsigned long)curId, m.from.c_str());
 }
 
 void nextOrFinish() {
   int i = savedList ? nextSavedAfter(curId) : firstNew();
-  if (i >= 0) { openMessage(i, savedList, true); return; }
+  if (i >= 0) { openMessage(i, savedList); return; }
   happyAt = millis();
   setUi(UI_HAPPY);
 }
@@ -296,9 +291,9 @@ void onPress() {
   switch (ui) {
     case UI_IDLE: {
       int n = firstNew();
-      if (n >= 0) { hapticTick(true); sessionDone = 0; openMessage(n, false, true); break; }
+      if (n >= 0) { hapticTick(true); sessionDone = 0; openMessage(n, false); break; }
       int s = nextSavedAfter(0);
-      if (s >= 0) { hapticTick(true); openMessage(s, true, true); }
+      if (s >= 0) { hapticTick(true); openMessage(s, true); }
       else hapticNope();  // nothing to show
       break;
     }
@@ -307,7 +302,7 @@ void onPress() {
       hapticTick(true);
       int n = firstNew();
       sessionDone = 0;
-      if (n >= 0) openMessage(n, false, true);
+      if (n >= 0) openMessage(n, false);
       else goIdle(false);
       break;
     }
@@ -337,6 +332,7 @@ void onPress() {
 void startAP(bool byUser);
 
 void knobLoop() {
+  encoderClicks += encoder.update((digitalRead(PIN_ENC_A) << 1) | digitalRead(PIN_ENC_B));
   bool raw = digitalRead(PIN_ENC_SW) == LOW;
   if (raw != btnDown && millis() - btnChange > 25) {
     btnDown = raw;
@@ -381,6 +377,8 @@ volatile bool mailCheckedOnce = false, mailOk = false, mailCheckNow = false, mai
 String mailError;
 
 void checkMail() {
+  xSemaphoreTake(networkOperationLock, portMAX_DELAY);
+  if (firmwareUpdater.active()) { xSemaphoreGive(networkOperationLock); return; }
   lastMailCheck = millis();
   mailBusy = true;
   String err;
@@ -388,7 +386,6 @@ void checkMail() {
   if (!cfg.gmailUser.length() || !cfg.gmailPass.length()) {
     err = "Gmail address or app password not set";
   } else {
-    digitalWrite(PIN_BOARD_LED, LOW);
     uint32_t t0 = millis();
     if (imap.connect(cfg.gmailUser, cfg.gmailPass)) {
       uint32_t uids[10];
@@ -412,7 +409,6 @@ void checkMail() {
       err = imap.error;
       logf("Gmail: %s", err.c_str());
     }
-    digitalWrite(PIN_BOARD_LED, HIGH);
   }
   xSemaphoreTake(mailLock, portMAX_DELAY);
   mailError = err;
@@ -420,12 +416,13 @@ void checkMail() {
   mailOk = ok;
   mailCheckedOnce = true;
   mailBusy = false;
+  xSemaphoreGive(networkOperationLock);
 }
 
 void mailTaskFn(void *) {
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(250));
-    if (!WiFi.isConnected()) continue;
+    if (!WiFi.isConnected() || firmwareUpdater.active()) continue;
     if (!mailCheckNow && mailCheckedOnce && millis() - lastMailCheck < cfg.pollSec * 1000UL) continue;
     mailCheckNow = false;
     checkMail();
@@ -445,9 +442,20 @@ void drainInbox() {
 
 WebServer server(80);
 DNSServer dns;
+bool webStarted = false;
 bool apByUser = false;
-uint32_t staRetryAt = 0, apOnSince = 0;
+uint32_t staRetryAt = 0, apOnSince = 0, apRetryAt = 0;
 bool mdnsUp = false, timeSet = false;
+
+void setupWeb();
+
+void startWeb() {
+  if (webStarted) return;
+  // WiFi.mode() initializes Arduino's network stack. Bind sockets only
+  // after that has succeeded, or lwIP can assert during a cold boot.
+  setupWeb();
+  webStarted = true;
+}
 
 void beginSta() {
   if (!cfg.ssid.length()) return;
@@ -458,13 +466,19 @@ void beginSta() {
 
 void startAP(bool byUser) {
   if (!apOn) {
-    WiFi.mode(WIFI_AP_STA);
+    apRetryAt = millis() + 5000;
+    logf("Starting setup Wi-Fi");
     String pass = cfg.apPass.length() >= 8 ? cfg.apPass : String("messagebox");
-    WiFi.softAP(AP_SSID, pass.c_str());
-    delay(100);
-    dns.start(53, "*", WiFi.softAPIP());
+    if (!WiFi.mode(WIFI_AP_STA) || !WiFi.softAP(AP_SSID, pass.c_str())) {
+      logf("Could not start setup Wi-Fi. Retrying in 5 seconds.");
+      return;
+    }
     apOn = true;
     apOnSince = millis();
+    if (!dns.start(53, "*", WiFi.softAPIP())) {
+      logf("Captive DNS unavailable. Open http://%s directly.", WiFi.softAPIP().toString().c_str());
+    }
+    startWeb();
     logf("Setup Wi-Fi '%s' on, open http://%s", AP_SSID, WiFi.softAPIP().toString().c_str());
   }
   if (byUser) apByUser = true;
@@ -474,7 +488,7 @@ void startAP(bool byUser) {
 // Back to what the box was doing before setup.
 void resumeUi() {
   if (firstNew() >= 0) enterEnvelope();
-  else setUi(UI_IDLE, true);
+  else setUi(UI_IDLE);
 }
 
 void stopAP() {
@@ -501,6 +515,7 @@ const char *staStateText() {
 }
 
 void onConnected() {
+  startWeb();
   logf("Wi-Fi connected, IP %s, %d dBm", WiFi.localIP().toString().c_str(), WiFi.RSSI());
   if (!mdnsUp && MDNS.begin(cfg.name.c_str())) {
     MDNS.addService("http", "tcp", 80);
@@ -523,8 +538,13 @@ void wifiLoop() {
     staRetryAt = millis() + 30000;  // auto-reconnect gets 30 s, then the setup Wi-Fi opens
   }
   wasConnected = c;
-  if (c || !cfg.ssid.length()) return;
-  if (!apOn && staRetryAt && (int32_t)(millis() - staRetryAt) > 0) {
+  if (c) return;
+  if (!cfg.ssid.length()) {
+    if (!apOn && (int32_t)(millis() - apRetryAt) >= 0) startAP(false);
+    return;
+  }
+  if (!apOn && staRetryAt && (int32_t)(millis() - staRetryAt) > 0 &&
+      (int32_t)(millis() - apRetryAt) >= 0) {
     logf("Can't join '%s' (%s)", cfg.ssid.c_str(), staStateText());
     startAP(false);
     staRetryAt = millis() + 60000;
@@ -572,6 +592,8 @@ void handleStatus() {
   j += ",\"error\":\"" + jsonEsc(err) + "\",\"ago\":" + String(mailCheckedOnce ? (long)((millis() - lastMailCheck) / 1000) : -1L) + "}";
   j += ",\"newCount\":" + String(countState(MSG_NEW)) + ",\"savedCount\":" + String(countState(MSG_SAVED));
   j += ",\"refreshMs\":" + String(lastRefreshMs) + ",\"refreshes\":" + String(refreshCount);
+  j += ",\"fullRefreshes\":" + String(fullRefreshCount) + ",\"partialRefreshes\":" + String(partialRefreshCount);
+  j += ",\"lastRefreshFull\":" + jb(lastRefreshFull) + ",\"firmware\":\"" + FIRMWARE_VERSION + "\"";
   String now = nowText();
   j += ",\"time\":\"" + jsonEsc(now.length() ? now : String("not set (needs internet)")) + "\"";
   j += ",\"uptime\":" + String(millis() / 1000) + ",\"heap\":" + String(ESP.getFreeHeap());
@@ -587,7 +609,11 @@ void handleStatus() {
   j += ",\"nms0\":" + String(cfg.ntfMsFirst) + ",\"nms1\":" + String(cfg.ntfMsLast);
   j += ",\"npow0\":" + String(cfg.ntfPowFirst) + ",\"npow1\":" + String(cfg.ntfPowLast);
   j += ",\"ngap\":" + String(cfg.ntfGap) + ",\"nrem\":" + String(cfg.ntfRemindMin);
-  j += ",\"rot\":" + String(cfg.rotation) + ",\"fullev\":" + String(cfg.fullEvery) + ",\"krev\":" + jb(cfg.knobReverse) + "}";
+  j += ",\"rot\":" + String(cfg.rotation) + ",\"krev\":" + jb(cfg.knobReverse) + "}";
+  FirmwareUpdateStatus update = firmwareUpdater.status();
+  j += ",\"update\":{\"busy\":" + jb(update.busy) + ",\"restarting\":" + jb(update.restarting);
+  j += ",\"written\":" + String(update.written) + ",\"total\":" + String(update.total);
+  j += ",\"message\":\"" + jsonEsc(update.message) + "\",\"token\":\"" + firmwareUpdater.token() + "\"}";
   j += ",\"log\":\"" + jsonEsc(logText()) + "\"}";
   server.send(200, "application/json", j);
 }
@@ -666,7 +692,14 @@ void readLookArgs(Settings &s) {
   s.ntfGap = argNum("ngap", 30, 3000, s.ntfGap);
 }
 
+bool blockDuringUpdate() {
+  if (!firmwareUpdater.active()) return false;
+  server.send(409, "text/plain", "Firmware update in progress. Wait for it to finish.");
+  return true;
+}
+
 void handleSettings() {
+  if (blockDuringUpdate()) return;
   Settings old = cfg;
   cfg.ssid = arg("ssid");
   if (server.arg("wpass").length()) cfg.wifiPass = server.arg("wpass");
@@ -684,7 +717,6 @@ void handleSettings() {
   cfg.ledMinutes = argNum("lmin", 0, 1440, cfg.ledMinutes);
   cfg.ntfRemindMin = argNum("nrem", 0, 1440, cfg.ntfRemindMin);
   cfg.rotation = argNum("rot", 0, 3, cfg.rotation);
-  cfg.fullEvery = argNum("fullev", 1, 50, cfg.fullEvery);
   cfg.knobReverse = argBool("krev", cfg.knobReverse);
   saveSettings();
   bool restart = cfg.ssid != old.ssid || cfg.wifiPass != old.wifiPass || cfg.name != old.name ||
@@ -767,6 +799,18 @@ void handleTest() {
 }
 
 void setupWeb() {
+  server.on("/api/update", HTTP_POST, [] {
+    if (!server.arg("token").length() || server.arg("token") != firmwareUpdater.token()) {
+      server.send(403, "text/plain", "Reload the device page before requesting an update");
+      return;
+    }
+    String error;
+    if (!firmwareUpdater.start(server.arg("url"), error)) {
+      server.send(400, "text/plain", error);
+      return;
+    }
+    sendText("Update queued. Watch its progress below; the device restarts when installed.");
+  });
   server.on("/", HTTP_GET, [] { server.send_P(200, "text/html", WEB_PAGE); });
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/messages", HTTP_GET, handleMessages);
@@ -797,11 +841,13 @@ void setupWeb() {
     stopAP();
   });
   server.on("/api/reboot", HTTP_POST, [] {
+    if (blockDuringUpdate()) return;
     sendText("Restarting...");
     rebootPending = true;
     rebootAt = millis() + 800;
   });
   server.on("/api/factory", HTTP_POST, [] {
+    if (blockDuringUpdate()) return;
     prefs.begin("mbox", false);
     prefs.clear();
     prefs.end();
@@ -825,40 +871,51 @@ void setupWeb() {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  Serial.printf("\n%s starting, reset reason %d\n", FIRMWARE_VERSION, (int)esp_reset_reason());
   logLock = xSemaphoreCreateMutex();
   mailLock = xSemaphoreCreateMutex();
-  pinMode(PIN_BOARD_LED, OUTPUT);
-  digitalWrite(PIN_BOARD_LED, HIGH);
+  networkOperationLock = xSemaphoreCreateMutex();
+  firmwareUpdater.begin(networkOperationLock);
   pinMode(PIN_ENC_A, INPUT_PULLUP);
   pinMode(PIN_ENC_B, INPUT_PULLUP);
   pinMode(PIN_ENC_SW, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(PIN_ENC_A), encISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_ENC_B), encISR, CHANGE);
+  encoder.begin((digitalRead(PIN_ENC_A) << 1) | digitalRead(PIN_ENC_B));
 
-  logf("MessageBox starting");
+  logf("Loading settings");
   loadSettings();
+  WiFi.persistent(false);
+  if (cfg.ssid.length()) {
+    staRetryAt = millis() + 20000;
+    if (WiFi.mode(WIFI_STA)) {
+      beginSta();
+    } else {
+      logf("Could not start home Wi-Fi. Trying setup mode.");
+      startAP(false);
+    }
+  } else {
+    startAP(false);
+  }
+
+  logf("Starting controls and display");
   hapticsBegin();
   ledsBegin();
   storeLoad();
   screenBegin();
-
-  setupWeb();
-  WiFi.persistent(false);
-  xTaskCreate(mailTaskFn, "mail", 12288, nullptr, 1, nullptr);
-  if (cfg.ssid.length()) {
-    WiFi.mode(WIFI_STA);
-    beginSta();
-    staRetryAt = millis() + 20000;  // 20 s to join, else the setup Wi-Fi opens
-    resumeUi();                     // envelope if there are new messages, else blank
+  if (apOn) {
+    showUi();
   } else {
-    logf("No Wi-Fi saved");
-    startAP(false);
+    resumeUi();
   }
+  if (!mailLock || !networkOperationLock ||
+      xTaskCreate(mailTaskFn, "mail", 12288, nullptr, 1, nullptr) != pdPASS) {
+    logf("Could not start the Gmail task");
+  }
+  logf("Startup complete");
 }
 
 void loop() {
   if (apOn) dns.processNextRequest();
-  server.handleClient();
+  if (webStarted) server.handleClient();
   knobLoop();
   hapticsLoop();
   ledsLoop();
@@ -893,9 +950,9 @@ void loop() {
   if (ui == UI_IDLE && ringMode == RING_OFF && !overrideUntil && (ambientColor || ambientRainbow)) ringForState();
   if (testScreenUntil && (int32_t)(now - testScreenUntil) > 0) {
     testScreenUntil = 0;
-    showUi(true);
+    showUi();
   }
-  if (rebootPending && (int32_t)(now - rebootAt) > 0) ESP.restart();
+  if (rebootPending && !firmwareUpdater.active() && (int32_t)(now - rebootAt) > 0) ESP.restart();
   // Setup Wi-Fi opened by hand closes after 15 minutes if the home Wi-Fi works and nobody is on it.
   if (apOn && apByUser && WiFi.isConnected() && now - apOnSince > 15 * 60000UL && WiFi.softAPgetStationNum() == 0) stopAP();
   delay(2);
