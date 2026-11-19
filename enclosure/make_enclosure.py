@@ -26,6 +26,8 @@ The e-paper module is WeAct's own 3D model (downloaded on first run); everything
 here from datasheet sizes.
 """
 import math
+
+import numpy as np
 import os
 import urllib.request
 
@@ -45,7 +47,10 @@ TOP_L = 25.0         # flat top behind the screen
 WALL = 2.5           # wall thickness
 BASE_T = 3.0         # base plate thickness
 EDGE_R = 4.0         # outside corner rounding
-
+# Fluted texture on the body: grooves running the same way as the layer lines (the body prints on
+# its side), so 0.2 mm layer lines vanish into deliberate 2 mm ribs. Each groove prints as a plain step.
+TEX_PITCH, TEX_GROOVE, TEX_DEPTH = 2.0, 1.0, 0.6
+TEX_MARGIN = 3.0     # smooth band round the screen and the ring
 # WeAct 3.7" e-paper module (from WeAct's outline drawing), mounted landscape
 EPD_PCB_L, EPD_PCB_W, EPD_PCB_T = 105.79, 53.80, 1.69
 EPD_HOLE_INSET = 2.80          # M3 holes (3.2 mm), 2.8 mm in from each edge
@@ -60,12 +65,15 @@ EPD_TAPE = 0.4                 # foam tape between glass and the wall
 RING_OD, RING_ID, RING_T = 50.0, 36.0, 1.6
 LED = 5.0                      # WS2812B 5050
 LED_H = 1.6
-DIFF_T = 2.5                   # diffuser thickness
-DIFF_GAP = 2.5                 # air gap diffuser -> LEDs (spreads the light)
-HUB_R = 15.0                   # black centre disc around the knob
+DIFF_T = 0.4                   # diffuser thickness (two 0.2 mm layers of white PLA/PETG)
+DIFF_GAP = 10.0                # LED tops to the diffuser. 12 LEDs on a 43 mm circle are 11.3 mm
+                               # apart; at 10 mm the light between two LEDs is within ~9 % of the
+                               # light over one, so the ring reads as one smooth band (see README)
+HUB_R = 15.0                   # black centre disc around the knob (the diffuser rests on a step at r+1)
+ENC_PLATE_W = 8.2              # depth of the plate the encoder screws to (inside the hub)
 SLEEVE_R_IN, SLEEVE_R_OUT = 27.0, 29.0   # black outer wall
 LEDGE_R = 26.0                 # the diffuser rests on this step
-PLATE_T = 2.0                  # shroud back plate (the encoder mounts to it)
+PLATE_T = 2.0                  # encoder plate and LED-channel floor thickness
 FLANGE_R = 37.0
 SCREW_R = 33.0                 # shroud screws (M2.5 x 8, self-tapping)
 KNOB_D, KNOB_H = 15.0, 16.0
@@ -154,9 +162,9 @@ def polar(r, deg):
 # ============================================================== the body (green)
 
 profile = [(0, 0), (0, DECK_H), (DECK_L, DECK_H), (DECK_L + FACE_L * S, TOTAL_H), (DEPTH, TOTAL_H), (DEPTH, 0)]
-body = (cq.Workplane("YZ").polyline(profile).close()
-        .extrude(W).edges("not(<Z)").fillet(EDGE_R).faces("<Z").shell(-WALL))
-body = body.val().Solids()[0]   # (booleans on the shell's compound wrapper lose the solid)
+outer = cq.Workplane("YZ").polyline(profile).close().extrude(W).edges("not(<Z)").fillet(EDGE_R)
+body = outer.faces("<Z").shell(-WALL).val().Solids()[0]   # (booleans on the shell's compound wrapper lose the solid)
+outer = outer.val().Solids()[0]
 
 # -- the screen window (with a 45 degree bevel on the outside)
 panel_u0 = EPD_U0 + PANEL_END_GAP
@@ -182,13 +190,18 @@ for du in (EPD_HOLE_INSET, EPD_PCB_L - EPD_HOLE_INSET):
         bosses.append(cyl_w(u, v, 3.0, WALL - 0.5, pcb_w0))
         pilots.append(cyl_w(u, v, 1.1, pcb_w0 - 3.5, pcb_w0 + 0.1))     # M2.5 x 5 self-tapping
 body = body.fuse(F(union(*bosses))).cut(F(union(*pilots)))
-plate_w0 = DIFF_T + DIFF_GAP + LED_H + RING_T  # top of the shroud's back plate (under the deck)
+w_led_front = DIFF_T + DIFF_GAP                # tops of the LEDs
+w_ring_front = w_led_front + LED_H
+floor_w0 = w_ring_front + RING_T               # the LED ring sits on the shroud's channel floor
+floor_w1 = floor_w0 + PLATE_T
+plate_w0 = ENC_PLATE_W                         # the encoder's plate, inside the hub
+plate_w1 = plate_w0 + PLATE_T                  # the encoder's mounting face
 SCREW_ANGLES = (90, 210, 330)
 bosses, pilots = [], []
 for a in SCREW_ANGLES:
     du, dv = polar(SCREW_R, a)
-    bosses.append(cyl_w(RING_U + du, RING_V + dv, 3.5, WALL - 0.5, plate_w0))
-    pilots.append(cyl_w(RING_U + du, RING_V + dv, 1.1, plate_w0 - 6, plate_w0 + 0.1))  # M2.5 x 8
+    bosses.append(cyl_w(RING_U + du, RING_V + dv, 3.5, WALL - 0.5, floor_w0))
+    pilots.append(cyl_w(RING_U + du, RING_V + dv, 1.1, floor_w0 - 6, floor_w0 + 0.1))  # M2.5 x 8
 body = body.fuse(D(union(*bosses))).cut(D(union(*pilots)))
 
 # -- base screw posts (vertical, in the corners, merged into the walls) and the USB-C hole
@@ -200,6 +213,26 @@ usb_z = ESP_PCB_Z + ESP_T + USB_H / 2
 usb_cut = (cq.Workplane("XZ", origin=(0, DEPTH + 1, 0)).center(ESP_X, usb_z)
            .rect(USB_CUT_W, USB_CUT_H).extrude(WALL + 2).edges("|Y").fillet(USB_CUT_R)).val()
 body = body.cut(usb_cut).clean()
+
+# -- fluted texture: a 0.6 mm skin under the outside surface, sliced into 1 mm grooves every 2 mm
+# across the width, except a smooth frame round the screen and the ring, round the USB-C hole,
+# along the bottom edge and on the rounded side edges
+from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeOffsetShape
+from OCP.BRepOffset import BRepOffset_Skin
+from OCP.GeomAbs import GeomAbs_Arc
+_off = BRepOffsetAPI_MakeOffsetShape()
+_off.PerformByJoin(outer.wrapped, -TEX_DEPTH, 1e-4, BRepOffset_Skin, False, False, GeomAbs_Arc)
+skin = outer.cut(cq.Shape.cast(_off.Shape()))       # the outer 0.6 mm of the body
+xs = np.arange(EDGE_R + 2, W - EDGE_R - 2 - TEX_GROOVE, TEX_PITCH)
+slabs = cq.Compound.makeCompound([box(x, x + TEX_GROOVE, -1, DEPTH + 1, 1.5, TOTAL_H + 1) for x in xs])
+keep = union(
+    F(box(EPD_U0 - TEX_MARGIN, EPD_U0 + EPD_PCB_L + TEX_MARGIN, -2, WALL + 2,
+          EPD_V0 - TEX_MARGIN, EPD_V0 + EPD_PCB_W + TEX_MARGIN)),                 # screen frame
+    D(cyl_w(RING_U, RING_V, SCREW_R + 3.5 + TEX_MARGIN, -2, WALL + 2)),            # ring collar
+    box(ESP_X - USB_CUT_W / 2 - TEX_MARGIN - 2, ESP_X + USB_CUT_W / 2 + TEX_MARGIN + 2,
+        DEPTH - WALL - 1, DEPTH + 1, 0, usb_z + USB_CUT_H / 2 + TEX_MARGIN + 2))   # USB-C surround
+grooves = skin.intersect(slabs).cut(keep)
+body = body.cut(grooves).clean()
 
 # ============================================================== base plate (green)
 
@@ -237,26 +270,26 @@ tie = union(box(tie_x[0] - 0.5, tie_x[1] + 0.5, esp_mid - TIE_W / 2, esp_mid + T
 
 # ============================================================== light shroud (black)
 
-w_led_front = DIFF_T + DIFF_GAP
-w_ring_front = w_led_front + LED_H
-plate_w1 = plate_w0 + PLATE_T
+HUB_IN = 10.0   # inside the hub below the encoder plate (the encoder body is 12 x 12.5 mm)
 sh = union(
-    ring_w(RING_U, RING_V, SLEEVE_R_IN, SLEEVE_R_OUT, 0, DIFF_T),          # top lip (holds the diffuser)
-    ring_w(RING_U, RING_V, LEDGE_R, SLEEVE_R_OUT, DIFF_T, plate_w0),       # wall with the diffuser ledge
-    cyl_w(RING_U, RING_V, HUB_R, 0, plate_w0),                             # black hub round the knob
-    cyl_w(RING_U, RING_V, FLANGE_R, plate_w0, plate_w1),                   # back plate / flange
+    ring_w(RING_U, RING_V, SLEEVE_R_IN, SLEEVE_R_OUT, 0, DIFF_T),          # top lip (round the diffuser)
+    ring_w(RING_U, RING_V, LEDGE_R, SLEEVE_R_OUT, DIFF_T, floor_w0),       # outer wall, with the diffuser's ledge
+    cyl_w(RING_U, RING_V, HUB_R, 0, DIFF_T),                               # black disc round the knob
+    cyl_w(RING_U, RING_V, HUB_R + 1, DIFF_T, plate_w1),                    # hub (the diffuser rests on its step)
+    ring_w(RING_U, RING_V, HUB_IN, HUB_R + 1, plate_w1, floor_w0),         # hub wall down to the floor
+    ring_w(RING_U, RING_V, HUB_IN, FLANGE_R, floor_w0, floor_w1),          # LED channel floor + flange
 )
 sh = sh.cut(cyl_w(RING_U, RING_V, 5.5, -1, plate_w0))                      # pocket for the encoder nut
 sh = sh.cut(cyl_w(RING_U, RING_V, 3.6, plate_w0 - 1, plate_w1 + 1))        # 7 mm bushing hole
 for a in SCREW_ANGLES:
     du, dv = polar(SCREW_R, a)
-    sh = sh.cut(cyl_w(RING_U + du, RING_V + dv, 1.4, plate_w0 - 1, plate_w1 + 1))
-sh = sh.cut(box(RING_U - 4, RING_U + 4, plate_w0 - 0.5, plate_w1 + 1, RING_V + 18.5, RING_V + 24.5))  # ring wires
-# vibration-module standoffs under the plate (towards the front of the box)
+    sh = sh.cut(cyl_w(RING_U + du, RING_V + dv, 1.4, floor_w0 - 1, floor_w1 + 1))
+sh = sh.cut(box(RING_U - 4, RING_U + 4, floor_w0 - 0.5, floor_w1 + 1, RING_V + 18.5, RING_V + 24.5))  # ring wires
+# vibration-module standoffs under the flange (towards the front of the box)
 vib_cv = RING_V - 27.0
 for sx in (-1, 1):
     hu, hv = RING_U + sx * VIB_HOLE_DX, vib_cv - VIB_HOLE_DY
-    sh = sh.fuse(cyl_w(hu, hv, 2.5, plate_w1 - 0.01, plate_w1 + 3)).cut(cyl_w(hu, hv, 0.9, plate_w1, plate_w1 + 3.1))
+    sh = sh.fuse(cyl_w(hu, hv, 2.5, floor_w1 - 0.01, floor_w1 + 3)).cut(cyl_w(hu, hv, 0.9, floor_w1, floor_w1 + 3.1))
 shroud = sh.clean()
 
 # ============================================================== diffuser (white)
@@ -289,7 +322,7 @@ knob = cyl_w(RING_U, RING_V, KNOB_D / 2, knob_w0 - KNOB_H, knob_w0).cut(cyl_w(RI
 knob_cap = cyl_w(RING_U, RING_V, KNOB_D / 2 - 1.5, knob_w0 - KNOB_H - 0.6, knob_w0 - KNOB_H)
 
 # vibration module (board parallel to the deck, under the shroud, motor underneath)
-vib_w0 = plate_w1 + 3
+vib_w0 = floor_w1 + 3
 vib_pcb = box(RING_U - VIB_W / 2, RING_U + VIB_W / 2, vib_w0, vib_w0 + VIB_T, vib_cv - VIB_H / 2, vib_cv + VIB_H / 2)
 for sx in (-1, 1):
     vib_pcb = vib_pcb.cut(cyl_w(RING_U + sx * VIB_HOLE_DX, vib_cv - VIB_HOLE_DY, 1.5, vib_w0 - 1, vib_w0 + 3))
