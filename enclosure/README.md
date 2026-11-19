@@ -21,6 +21,7 @@ deck with the knob on top, rising at the back into a block whose sloped face hol
 | `print/body.stl` | Green. Prints on its side: the side profile flat on the bed, so every wall stands upright. |
 | `print/base.stl` | Green. Prints flat, with the ESP32-C3 cradle and the screw posts facing up. |
 | `print/light_shroud.stl` | Black (it must not glow). Prints top-lip down; it needs supports under the flange. |
+| `print/esp_clamp.stl` | Any colour (black in the model). A 12 × 6 × 6 mm saddle that locks the ESP32-C3 down with a zip tie through its middle. Prints rounded top down, no supports. |
 | `print/diffuser.stl` | White. 2.5 mm flat ring, printed flat. White PLA/PETG at 100 % infill glows evenly. For a softer glow, print it 1.2 mm thick in natural PETG and sand the top. |
 | `make_enclosure.py` | Makes all of the above. Every size is a parameter at the top. |
 | `check_fit.py` | Builds the model and reports any parts that overlap (there are none). |
@@ -68,6 +69,7 @@ and the knob.
 | 2 | M2 × 5 mm self-tapping screws | Vibration board to the shroud |
 | 4 | M3 × 12 mm countersunk self-tapping screws | Base to the body |
 | 4 | 12 mm stick-on rubber feet | Recesses in the base |
+| 1 | Zip tie, up to 3.6 mm wide, about 100 mm long | Locks the ESP32-C3 down (through the ESP clamp) |
 | | Thin double-sided foam tape (about 0.4 mm) | Between the e-paper glass and the inside of the screen face, round the window |
 
 ## Putting it together
@@ -90,9 +92,16 @@ and the knob.
    - Put foam tape round the window inside the screen face.
    - Lay the e-paper glass-first on the tape, and screw the board to the 4 bosses.
    - Its header ends up on the right (seen from the front), next to where the ESP32-C3 sits.
-6. **ESP32-C3:** slide its far end into the slot in the base's cradle. The USB end rests on
-   the post. A dab of hot glue on each USB-end corner keeps it down, and the slot takes the push
-   when a cable goes in.
+6. **ESP32-C3:**
+   - Slide its far end into the slot in the base's cradle, so the USB end rests on the post.
+   - Sit the **ESP clamp** on top of the USB-C socket's metal shell.
+   - Feed a zip tie up through one slot beside the board, through the tunnel in the middle of
+     the clamp, and down the slot on the other side. Lock it under the base: the groove there
+     keeps the strap flush, so the base still sits flat.
+   - Pull it snug. This squeezes the board between the clamp and the post, while the slot holds
+     the far end. The tie passes 5 mm outside the board's edges, so it clears the soldered pins.
+     Trim the tail.
+   ![The ESP32-C3 locked down by the clamp and zip tie](esp-clamp.png)
 7. **Close it up:**
    - Wire everything as in [`../wiring.svg`](../wiring.svg).
    - Fit the base into the bottom with the USB-C lined up with the rear-wall hole.

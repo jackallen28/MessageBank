@@ -4,7 +4,7 @@ MessageBox enclosure: builds a STEP assembly of the housing with every component
 
     pip install cadquery          (tested with CadQuery 2.8)
     python3 make_enclosure.py     -> MessageBox-enclosure.step  (the assembly, with colours)
-                                     print/*.stl                (the four printed parts)
+                                     print/*.stl                (the printed parts)
 
 Shape (side view): a low, flat front deck with the knob on top, rising at the back into a
 block whose sloped face holds the screen.
@@ -78,6 +78,10 @@ ESP_X = W - 35.0               # centre, across the width (near the screen's hea
 ESP_PCB_Z = 12.0               # underside of the board above the bottom (room for wires/pins)
 USB_W, USB_L, USB_H, USB_OVERHANG = 8.94, 7.35, 3.2, 1.0
 USB_CUT_W, USB_CUT_H, USB_CUT_R = 12.5, 7.5, 2.0   # rear-wall hole: fits a USB-C plug's overmould
+# ESP clamp: a saddle on the USB-C shell, held down by a zip tie through its middle
+TIE_W, TIE_T = 3.6, 1.2        # zip tie strap (a common 3.6 mm tie; 2.5 mm ties fit too)
+CLAMP_W, CLAMP_L, CLAMP_H = 12.0, 6.0, 6.0   # across the board, along it, tall
+TIE_OUT = 5.1                  # the tie goes down this far outside each edge of the board
 
 # Vibration module (measure yours)
 VIB_W, VIB_H, VIB_T = 25.0, 21.0, 1.6
@@ -216,6 +220,27 @@ slot_block = slot_block.cut(box(ex0 - 0.2, ex1 + 0.2, esp_y0 - 1.0, esp_y0 + 2, 
 slot_block = slot_block.cut(box(ex0 + 2, ex1 - 2, esp_y0 - 1.0, esp_y0 + 2, ESP_PCB_Z - 0.1, ESP_PCB_Z + ESP_T + 3.1))
 post = box(ESP_X - 3, ESP_X + 3, esp_y1 - 6, esp_y1 - 1, BASE_T - 0.01, ESP_PCB_Z)
 base = union(base, slot_block, post)
+# -- zip tie path: two slots beside the board, and a groove underneath so the base still sits flat
+usb_cy = esp_y1 + USB_OVERHANG - USB_L / 2      # middle of the USB-C shell
+tie_x = (ex0 - TIE_OUT, ex1 + TIE_OUT)
+for tx in tie_x:
+    base = base.cut(box(tx - 1.1, tx + 1.1, usb_cy - 2.25, usb_cy + 2.25, -1, BASE_T + 1))
+base = base.cut(box(tie_x[0] - 1.1, tie_x[1] + 1.1, usb_cy - 2.25, usb_cy + 2.25, -1, 1.6)).clean()
+
+# ============================================================== ESP clamp (black)
+# Sits on the USB-C shell; the zip tie runs through the tunnel in its middle, down through the
+# base slots and back underneath. Tightening it squeezes the board between this and the post.
+usb_top = ESP_PCB_Z + ESP_T + USB_H
+clamp = box(ESP_X - CLAMP_W / 2, ESP_X + CLAMP_W / 2, usb_cy - CLAMP_L / 2, usb_cy + CLAMP_L / 2, usb_top, usb_top + CLAMP_H)
+tie_z = usb_top + 1.8 + 0.9                     # middle of the tunnel (1.8 mm floor)
+clamp = clamp.cut(box(ESP_X - CLAMP_W, ESP_X + CLAMP_W, usb_cy - 2.0, usb_cy + 2.0, tie_z - 0.9, tie_z + 0.9))
+clamp = cq.Workplane().add(clamp).edges("|X and >Z").fillet(1.5).val()
+# the zip tie itself (for the picture): over the clamp, down both sides, under the base
+tie = union(box(tie_x[0] - 0.6, tie_x[1] + 0.6, usb_cy - TIE_W / 2, usb_cy + TIE_W / 2, tie_z - TIE_T / 2, tie_z + TIE_T / 2),
+            box(tie_x[0] - 0.6, tie_x[0] + 0.6, usb_cy - TIE_W / 2, usb_cy + TIE_W / 2, 0.2, tie_z + TIE_T / 2),
+            box(tie_x[1] - 0.6, tie_x[1] + 0.6, usb_cy - TIE_W / 2, usb_cy + TIE_W / 2, 0.2, tie_z + TIE_T / 2),
+            box(tie_x[0] - 0.6, tie_x[1] + 0.6, usb_cy - TIE_W / 2, usb_cy + TIE_W / 2, 0.2, 1.4),
+            box(tie_x[0] - 5.0, tie_x[0] - 0.6, usb_cy - 2.6, usb_cy + 2.6, 7.0, 11.0))   # the tie's head
 
 # ============================================================== light shroud (black)
 
@@ -330,6 +355,8 @@ asm.add(F(cq.Compound.makeCompound(epd_parts)), name="epaper_module_parts", colo
 asm.add(esp_pcb, name="esp32c3_pcb", color=PCB_BLACK)
 asm.add(esp_usb, name="esp32c3_usb_c", color=METAL)
 asm.add(esp_parts, name="esp32c3_parts", color=cq.Color(0.3, 0.3, 0.3))
+asm.add(clamp, name="esp_clamp", color=BLACK)
+asm.add(tie, name="zip_tie", color=cq.Color(0.92, 0.92, 0.88))
 
 out = os.path.join(HERE, "MessageBox-enclosure.step")
 asm.export(out)
@@ -345,6 +372,7 @@ stl(body_side.translate(V(-bb.xmin, -bb.ymin, -bb.zmin)), "body.stl")
 stl(base, "base.stl")
 stl(shroud.rotate(V(0, 0, 0), V(1, 0, 0), 90), "light_shroud.stl", 0.02)  # top lip on the bed
 stl(diffuser.rotate(V(0, 0, 0), V(1, 0, 0), 90), "diffuser.stl", 0.02)
+stl(clamp.rotate(V(0, 0, 0), V(1, 0, 0), 180), "esp_clamp.stl", 0.02)  # rounded top down
 print("wrote print/*.stl")
 
 # for previews and checks
