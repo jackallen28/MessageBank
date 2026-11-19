@@ -225,3 +225,13 @@ example to change networks.
 ## Next steps
 
 - Send messages back, for example with a knob press, using Gmail SMTP and the same app password.
+
+## Third-party parts
+
+- `MessageBox/MB_EPD370.h` / `.cpp` are a lightly modified copy of the GDEY037T03 driver from
+  [GxEPD2](https://github.com/ZinggJM/GxEPD2) by Jean-Marc Zingg (GPL-3.0). The firmware also
+  links GxEPD2, Adafruit GFX, Adafruit NeoPixel and Arduino-ESP32 as libraries.
+- `MessageBox/certs.h` holds Google Trust Services' public root certificates.
+- `enclosure/MessageBox-enclosure.step` includes WeAct Studio's published 3D model of their 3.7"
+  e-paper module. The script downloads it from
+  [WeActStudio.EpaperModule](https://github.com/WeActStudio/WeActStudio.EpaperModule) on first run.
