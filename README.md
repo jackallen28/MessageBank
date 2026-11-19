@@ -203,10 +203,11 @@ example to change networks.
 - `MessageBox/web_page.h`: the setup and test page
 - `MessageBox/certs.h`: Google's root certificates, so the box checks it's really talking to Gmail
 - `wiring.svg`: the wiring diagram (made by `tools/make_wiring.py`)
+- `enclosure/`: the 3D-printed housing: a STEP assembly with every part in place, STL files to
+  print, and how to put it together (see [`enclosure/README.md`](enclosure/README.md))
 - `screens.png`: the screens, drawn on a PC with the firmware's own drawing code
   (`tools/preview_screens.cpp`, `tools/make_previews.py`)
 
 ## Next steps
 
 - Send messages back, for example with a knob press, using Gmail SMTP and the same app password.
-- A case: the ring behind a diffuser around the screen.

@@ -53,7 +53,7 @@ struct Settings {
   uint16_t ntfGap = 320;                        // ms between ticks
   uint16_t ntfRemindMin = 0;                    // buzz again every N minutes while unread (0 = off)
   // screen and knob
-  uint8_t rotation = 0;        // 0 portrait (USB/cable at the bottom), 1 landscape, 2, 3 flipped
+  uint8_t rotation = 1;        // 0 portrait, 1 landscape (as in the enclosure), 2 and 3 the same turned 180
   uint8_t fullEvery = 10;      // a full (clean) refresh after this many fast ones
   bool knobReverse = false;
 } cfg;
