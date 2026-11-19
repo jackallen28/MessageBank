@@ -61,8 +61,14 @@ ACTIVE_L, ACTIVE_W = 81.54, 47.04
 ACTIVE_FPC_BORDER = 7.00       # glass border on the ribbon-cable end (the header end): check yours
 WINDOW_MARGIN = 0.60           # window is this much bigger than the active area on each side
 EPD_TAPE = 0.4                 # foam tape between glass and the wall
-SCREW_PILOT = 2.5              # every screw is the same small self-tapper (about 3 mm), in 2.5 mm pilot holes
-SCREW_CLEAR = 3.3              # ...and through 3.3 mm clearance holes
+# ---- FDM print tolerances (tuned for a 0.4 mm nozzle, PLA/PETG, 0.2 mm layers)
+HOLE_COMP = 0.15               # printed holes come out this much smaller across, so holes are drawn this much bigger
+FIT_SLIDE = 0.3                # gap per side where a printed part drops into another (shroud, diffuser)
+FIT_RAIL = 0.35                # gap per side for the screen carrier sliding in its rails
+FIT_BASE = 0.4                 # gap per side round the base inside the body (long, thin, flexes)
+EF_CHAMFER = 0.5               # chamfer on bed-side edges that must fit inside something (elephant's foot)
+SCREW_PILOT = 2.5 + HOLE_COMP  # every screw is the same small self-tapper (about 3 mm): pilots print at ~2.5 mm
+SCREW_CLEAR = 3.3 + HOLE_COMP  # ...and clearance holes print at ~3.3 mm
 EPD_PILOT = SCREW_PILOT        # the screen's 4 screws go through the board's own 3.2 mm holes
 EPD_PILOT_DEPTH = 3.2          # (no longer used: the screen screws into the carrier, see below)
 
@@ -82,7 +88,7 @@ PLATE_T = 2.0                  # encoder plate and LED-channel floor thickness
 FLANGE_R = 37.0
 SCREW_R = 33.0                 # shroud screws (M2.5 x 8, self-tapping)
 KNOB_D, KNOB_H = 20.0, 16.0   # printed knob: plain top, thimble dimples round the side
-KNOB_BORE = 5.9                # tight on the KY-040's knurled split 6 mm shaft (6.1 for a D shaft + glue)
+KNOB_BORE = 5.85 + HOLE_COMP   # prints at ~5.85: a press fit on the KY-040's knurled split 6 mm shaft (6.25 for a D shaft + glue)
 KNOB_BORE_DEPTH = 11.0
 KNOB_LIFT = 0.5                # knob skirt above the deck
 ENC_SHAFT_L = 20.0             # EC11 shaft length from the mounting face
@@ -190,7 +196,7 @@ cut = cut.fuse(cq.Workplane(bevel_plane).center(-(win[0] + win[1]) / 2, (win[2] 
                .rect(win[1] - win[0] + 2 * bevel, win[3] - win[2] + 2 * bevel).extrude(bevel + 0.01, taper=45).val())
 body = body.cut(F(cut))
 # -- the round opening in the deck for the shroud
-body = body.cut(D(cyl_w(RING_U, RING_V, SLEEVE_R_OUT + 0.2, -1, WALL + 1)))
+body = body.cut(D(cyl_w(RING_U, RING_V, SLEEVE_R_OUT + FIT_SLIDE, -1, WALL + 1)))
 
 # -- the screen. A straight screwdriver can't reach screws in the sloped face from the open bottom
 # (the rear wall is in the way), so the e-paper is screwed to a printed CARRIER on the bench (4
@@ -217,11 +223,11 @@ body = body.cut(F(union(*[cyl_w(u, v, 3.6, WALL - 1.0, WALL + 0.1) for u, v in e
 rails = []
 for side in (-1, 1):
     e = car_u0 if side < 0 else car_u1
-    post = (e - 2.5, e - 0.2) if side < 0 else (e + 0.2, e + 2.5)
+    post = (e - 2.5, e - FIT_RAIL) if side < 0 else (e + FIT_RAIL, e + 2.5)
     lip = (e - 2.5, e + 3.0) if side < 0 else (e - 3.0, e + 2.5)
     rails.append(box(post[0], post[1], WALL - 0.5, CAR_W1 + 2.1, car_v1 - RAIL_L, car_v1 + 2.2))  # side wall
-    rails.append(box(lip[0], lip[1], CAR_W1 + 0.15, CAR_W1 + 2.1, car_v1 - RAIL_L, car_v1 + 2.2))  # lip behind
-    rails.append(box(lip[0], lip[1], WALL - 0.5, CAR_W1 + 2.1, car_v1 + 0.2, car_v1 + 2.2))       # top stop
+    rails.append(box(lip[0], lip[1], CAR_W1 + FIT_RAIL, CAR_W1 + 2.1, car_v1 - RAIL_L, car_v1 + 2.2))  # lip behind
+    rails.append(box(lip[0], lip[1], WALL - 0.5, CAR_W1 + 2.1, car_v1 + FIT_RAIL, car_v1 + 2.2))  # top stop
 body = body.fuse(F(union(*rails)))
 lock_boss = cyl_z(LOCK_X, LOCK_Y, 4.5, LOCK_Z + 0.3, DECK_H - 0.5).intersect(outer)
 body = body.fuse(lock_boss).cut(cyl_z(LOCK_X, LOCK_Y, SCREW_PILOT / 2, LOCK_Z + 0.2, DECK_H - 1.0))
@@ -256,7 +262,7 @@ body = body.fuse(D(union(*bosses))).cut(D(union(*pilots)))
 cx0, cy0, cy1 = WALL + 3.5, WALL + 3.5, DEPTH - WALL - 3.5
 corner = [(cx0, cy0), (W - cx0, cy0), (cx0, cy1), (W - cx0, cy1)]
 for x, y in corner:
-    body = body.fuse(cyl_z(x, y, 4.0, BASE_T, BASE_T + 10)).cut(cyl_z(x, y, 1.25, BASE_T - 0.1, BASE_T + 9))
+    body = body.fuse(cyl_z(x, y, 4.0, BASE_T, BASE_T + 10)).cut(cyl_z(x, y, SCREW_PILOT / 2, BASE_T - 0.1, BASE_T + 9))
 usb_z = ESP_PCB_Z + ESP_T + USB_H / 2
 usb_cut = (cq.Workplane("XZ", origin=(0, DEPTH + 1, 0)).center(ESP_X, usb_z)
            .rect(USB_CUT_W, USB_CUT_H).extrude(WALL + 2).edges("|Y").fillet(USB_CUT_R)).val()
@@ -287,13 +293,13 @@ body = body.cut(grooves).clean()
 
 # ============================================================== base plate (green)
 
-bx0, bx1 = WALL + 0.25, W - WALL - 0.25
-by0, by1 = WALL + 0.25, DEPTH - WALL - 0.25
+bx0, bx1 = WALL + FIT_BASE, W - WALL - FIT_BASE
+by0, by1 = WALL + FIT_BASE, DEPTH - WALL - FIT_BASE
 base = cq.Workplane("XY").box(bx1 - bx0, by1 - by0, BASE_T, centered=False).translate((bx0, by0, 0)) \
-    .edges("|Z").fillet(1.5).val()
+    .edges("|Z").fillet(1.5).faces("<Z").edges().chamfer(EF_CHAMFER).val()   # elephant's-foot chamfer underneath
 for x, y in corner:   # countersunk M3 holes from underneath
-    base = base.cut(cyl_z(x, y, 1.7, -1, BASE_T + 1))
-    base = base.cut(cq.Solid.makeCone(3.3, 1.7, 1.6, V(x, y, -0.001), V(0, 0, 1)))
+    base = base.cut(cyl_z(x, y, SCREW_CLEAR / 2, -1, BASE_T + 1))
+    base = base.cut(cq.Solid.makeCone(3.4, SCREW_CLEAR / 2, 1.6, V(x, y, -0.001), V(0, 0, 1)))
 for x, y in [(20, 20), (W - 20, 20), (20, DEPTH - 35), (W - 20, DEPTH - 35)]:
     base = base.cut(cyl_z(x, y, 6.2, -1, 1.0))   # 12 mm stick-on rubber feet sit in these
 # -- ESP32-C3 cradle: a slot holds the far end, a post under the USB end
@@ -302,7 +308,7 @@ esp_y0 = esp_y1 - ESP_L
 ex0, ex1 = ESP_X - ESP_W / 2, ESP_X + ESP_W / 2
 # the board lies flat on a ridge between its two pin rows; its far end butts against a stop
 ridge = box(ESP_X - PIN_ROW_DX + 1.6, ESP_X + PIN_ROW_DX - 1.6, esp_y0 + 1, esp_y1, BASE_T - 0.01, ESP_PCB_Z)
-stop = box(ESP_X - 5, ESP_X + 5, esp_y0 - 2.2, esp_y0 - 0.2, BASE_T - 0.01, ESP_PCB_Z + ESP_T + 1.5)
+stop = box(ESP_X - 5, ESP_X + 5, esp_y0 - 2.3, esp_y0 - 0.3, BASE_T - 0.01, ESP_PCB_Z + ESP_T + 1.5)
 base = union(base, ridge, stop)
 # -- zip tie round the middle of the board: a slot beside each edge, and a groove underneath so
 # the base still sits flat
@@ -312,8 +318,8 @@ TIE_PIN = 4                                     # 0 = the pin nearest the USB-C 
 esp_mid = esp_y1 - 2.37 - 2.54 * TIE_PIN
 tie_x = (ex0 - 0.9, ex1 + 0.9)
 for tx in tie_x:
-    base = base.cut(box(tx - 0.8, tx + 0.8, esp_mid - 1.3, esp_mid + 1.3, -1, BASE_T + 1))
-base = base.cut(box(tie_x[0] - 0.8, tie_x[1] + 0.8, esp_mid - 1.3, esp_mid + 1.3, -1, 1.2)).clean()
+    base = base.cut(box(tx - 0.9, tx + 0.9, esp_mid - 1.4, esp_mid + 1.4, -1, BASE_T + 1))
+base = base.cut(box(tie_x[0] - 0.9, tie_x[1] + 0.9, esp_mid - 1.4, esp_mid + 1.4, -1, 1.2)).clean()
 # the zip tie itself (for the picture): over the board, down both edges, under the base
 tie_top = ESP_PCB_Z + ESP_T + 0.95              # it lies over the C3 chip
 tie = union(box(tie_x[0] - 0.5, tie_x[1] + 0.5, esp_mid - TIE_W / 2, esp_mid + TIE_W / 2, tie_top, tie_top + TIE_T),
@@ -336,7 +342,7 @@ sh = union(
 )
 sh = sh.cut(cyl_w(RING_U, RING_V, NUT_POCKET_R, -1, plate_w0))             # pocket: room for a 10 mm socket on the nut
 sh = sh.cut(ring_w(RING_U, RING_V, 5.6, 8.9, plate_w1 - 1.0, plate_w1 + 0.1))  # groove for the encoder's anti-rotation tab
-sh = sh.cut(cyl_w(RING_U, RING_V, 3.6, plate_w0 - 1, plate_w1 + 1))        # 7 mm bushing hole
+sh = sh.cut(cyl_w(RING_U, RING_V, 3.6 + HOLE_COMP / 2, plate_w0 - 1, plate_w1 + 1))  # 7 mm bushing: prints ~7.2
 for a in SCREW_ANGLES:
     du, dv = polar(SCREW_R, a)
     sh = sh.cut(cyl_w(RING_U + du, RING_V + dv, SCREW_CLEAR / 2, floor_w0 - 1, floor_w1 + 1))
@@ -356,7 +362,7 @@ shroud = sh.clean()
 
 # ============================================================== diffuser (white)
 
-diffuser = ring_w(RING_U, RING_V, HUB_R + 0.2, SLEEVE_R_IN - 0.2, 0, DIFF_T)
+diffuser = ring_w(RING_U, RING_V, HUB_R + FIT_SLIDE, SLEEVE_R_IN - FIT_SLIDE, 0, DIFF_T)
 
 # ============================================================== bought parts
 

@@ -54,8 +54,8 @@ every check.
 | LED ring | Its wired pins drop through a 50° slot in the channel floor, with 15 mm clear below |
 | E-paper header | 25 mm clear behind it |
 | USB-C | 13 × 8 plug body in a 14.5 × 9 pocket; the socket sits 1.3 mm behind it, so any cable reaches |
-| Diffuser | 0.2 mm gap each side; rests on 0.8 mm ledges at both edges |
-| Shroud in the deck | 0.2 mm gap; base in the body 0.25 mm |
+| Diffuser | 0.3 mm gap each side; rests on 0.7 mm ledges at both edges |
+| Shroud in the deck | 0.3 mm gap; screen carrier in its rails 0.35 mm; base in the body 0.4 mm |
 | Knob | 0.5 mm above the deck, 5 mm clear of the diffuser; covers the nut pocket |
 | Nut pocket | 15.5 mm, so a 10 mm socket fits |
 | Encoder plate | Has a groove for the anti-rotation tab, so the encoder sits flat |
@@ -64,6 +64,44 @@ every check.
 | Tool access | Shroud screws (3) and the screen-lock screw go straight up from the open bottom with nothing in the way. A 10 mm socket reaches the encoder nut from above. |
 | Screen slide-in | The screen and carrier clear everything at every millimetre of their 8 mm slide |
 | STL files | Watertight, and fit a 220 × 220 × 250 mm bed |
+
+## Tolerances (built into the STLs)
+
+The STLs are drawn for a normal FDM printer (0.4 mm nozzle, PLA or PETG, 0.2 mm layers), so
+the sizes below are what fits **after** printing. Every value is a parameter at the top of
+`make_enclosure.py`.
+
+| Fit | Gap per side, as drawn | Parameter |
+|---|---|---|
+| Light shroud into the deck opening | 0.30 mm | `FIT_SLIDE` |
+| Diffuser between the shroud lip and the hub | 0.30 mm | `FIT_SLIDE` |
+| Screen carrier in its rails (sides, behind, top stop) | 0.35 mm | `FIT_RAIL` |
+| Base inside the body | 0.40 mm, plus a 0.5 mm chamfer round its underside | `FIT_BASE`, `EF_CHAMFER` |
+| ESP32-C3 against its stop | 0.3 mm play | |
+| Zip-tie slots (for a 2 × 1 mm tie) | 0.4 mm | |
+| USB-C plug body (13 × 8) in its pocket | 0.75 / 0.5 mm | `USB_POCKET_*` |
+
+**Holes:** printed holes come out about 0.15 mm small, so every hole is drawn 0.15 mm bigger
+(`HOLE_COMP`):
+
+| Hole | Drawn | Prints at about |
+|---|---|---|
+| Self-tapper pilot (all screws) | 2.65 mm | 2.5 mm |
+| Screw clearance | 3.45 mm | 3.3 mm |
+| Encoder bushing | 7.35 mm | 7.2 mm (7 mm bushing) |
+| Knob bore | 6.0 mm | 5.85 mm: a press fit on the 6 mm knurled shaft |
+
+**Elephant's foot:** the base's underside has a 0.5 mm chamfer, so the first layers can't
+stop it going into the body. Slicer elephant-foot compensation (about 0.15 mm) is still worth
+turning on for the body, the base and the screen carrier.
+
+**Slicer settings:** keep **X-Y hole compensation and X-Y size compensation at 0**, because
+the files already allow for them. If your printer prints holes true to size (some tuned
+printers do), set `HOLE_COMP = 0` and rebuild.
+
+**Test fit first:** print the knob, diffuser and shroud (about 1.5 hours together) and check
+them on the encoder and the LED ring before the long body print. If the knob is loose, lower
+`KNOB_BORE` by 0.1 mm; if a slide fit is tight, raise `FIT_SLIDE` by 0.1.
 
 ## Printing
 
@@ -82,8 +120,8 @@ Notes:
   few layers printed 0.6 mm further in, a step that needs no support.
 - **Diffuser:** if you can still see the LEDs as dots, set `DIFF_T = 0.6`. If it's too dim, use
   natural (translucent) PETG.
-- **Knob fit:** its 5.9 mm hole presses onto the KY-040's knurled split shaft. For a D-shaft
-  encoder, set `KNOB_BORE = 6.1` and add a drop of glue.
+- **Knob fit:** its hole prints at about 5.85 mm and presses onto the KY-040's knurled split
+  shaft. For a D-shaft encoder, set `KNOB_BORE = 6.25` and add a drop of glue.
 
 ## The diffuser: why 10 mm
 
@@ -117,8 +155,6 @@ those are exact. Everything else is from datasheets and listings:
 | Vibration board | 21 × 25 mm, two holes 18 mm apart on the wire edge | `VIB_*` |
 | ESP32-C3 SuperMini | 22.5 × 18 mm; USB-C sticking out 1 mm | `ESP_*`, `USB_*` |
 
-Quick test: print the knob, diffuser and shroud first (about 1.5 hours together), then check
-they fit the encoder and the ring before the long body print.
 
 ## Hardware and tools
 
@@ -133,7 +169,7 @@ they fit the encoder and the ring before the long body print.
 | 1 | 2 mm zip tie, about 100 mm | ESP32-C3 |
 | | Thin double-sided foam tape (about 0.4 mm) | Round the window, between the glass and the face |
 
-All screws take the same 2.5 mm pilot hole (about 3 mm self-tappers).
+All screws take the same 2.5 mm pilot hole as printed (about 3 mm self-tappers).
 
 **Tools:**
 - A small Phillips or Pozi screwdriver with a shaft **at least 60 mm long**, because the shroud
