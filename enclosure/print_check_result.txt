@@ -1,5 +1,5 @@
 1. Solids and overlaps
-  ok    body: valid, 1 solid, 133.2 cm3
+  ok    body: valid, 1 solid, 134.0 cm3
   ok    base: valid, 1 solid, 56.1 cm3
   ok    light_shroud: valid, 1 solid, 22.9 cm3
   ok    diffuser: valid, 1 solid, 0.6 cm3
@@ -33,8 +33,8 @@
   ok    ESP32-C3 between its stop and the rear wall: 0.00 mm
   ok    zip tie (2 x 1 mm) in its slots, width: 0.30 mm
   ok    zip tie in its slots, thickness: 0.30 mm
-  ok    screen screws: 2.5 mm pilots 3.2 mm deep leave 0.9 mm of face wall in front
-  ok    screen screws: a 5 mm screw gets 3.3 mm of thread into its boss
+  ok    screen screw-head pockets leave 1.5 mm of face wall
+  ok    screen carrier: 0.9 mm clear of the board's tallest part (3.6 mm)
   ok    USB-C socket sits 1.3 mm behind the bottom of the pocket (a plug reaches up to ~2)
 4. Thinnest walls
   ok    body wall under the texture grooves: 1.9 mm (min 1.6)
@@ -46,10 +46,19 @@
   ok    shroud channel floor / flange: 2.0 mm (min 1.6)
   ok    encoder plate under the tab groove: 1.0 mm (min 0.8)
   ok    diffuser (two 0.2 mm layers): 0.4 mm (min 0.4)
+4b. Tool access and fitting order
+  ok    shroud screw at 90 deg: straight up from the open bottom
+  ok    shroud screw at 210 deg: straight up from the open bottom
+  ok    shroud screw at 330 deg: straight up from the open bottom
+  ok    screen carrier's locking screw: straight up from the open bottom
+  ok    screen's 4 screws and the vibration board's 2: fitted on the bench, before those parts go in
+  ok    base screws: from underneath, countersunk
+  ok    encoder nut: a 10 mm socket reaches it from above (knob off)
+  ok    screen + carrier slide in: clear at every millimetre of the 8 mm slide
 5. STL files
   ok    base.stl: watertight (7188 triangles)
   ok    base.stl: 134 x 140 x 8 mm, flat on the bed, fits 220 x 220 x 250
-  ok    body.stl: watertight (87730 triangles)
+  ok    body.stl: watertight (86818 triangles)
   ok    body.stl: 140 x 145 x 111 mm, flat on the bed, fits 220 x 220 x 250
   ok    diffuser.stl: watertight (1008 triangles)
   ok    diffuser.stl: 54 x 54 x 0 mm, flat on the bed, fits 220 x 220 x 250
@@ -57,6 +66,8 @@
   ok    knob.stl: 20 x 20 x 16 mm, flat on the bed, fits 220 x 220 x 250
   ok    light_shroud.stl: watertight (9254 triangles)
   ok    light_shroud.stl: 74 x 74 x 16 mm, flat on the bed, fits 220 x 220 x 250
+  ok    screen_carrier.stl: watertight (4652 triangles)
+  ok    screen_carrier.stl: 114 x 77 x 15 mm, flat on the bed, fits 220 x 220 x 250
 6. Overhangs steeper than 45 degrees, as each part is exported (bridges count here too)
   note  base.stl: 530 mm2 facing down. The biggest areas, at height z above the bed:
           z     0:    530 mm2 over x 14-126, y 14-129
@@ -70,12 +81,16 @@
   note  light_shroud.stl: 286 mm2 facing down. The biggest areas, at height z above the bed:
           z     6:    273 mm2 over x 27-47, y 27-47
           z     3:     13 mm2 over x 72-74, y 26-48
-  note  body.stl (untextured): 11812 mm2 facing down. The biggest areas, at height z above the bed:
-          z    45:   8151 mm2 over x 3-137, y 3-85
+  note  screen_carrier.stl: 10 mm2 facing down. The biggest areas, at height z above the bed:
+          z    12:      4 mm2 over x 14-16, y 4-4
+          z     9:      4 mm2 over x 14-16, y 3-3
+          z     3:      2 mm2 over x 106-109, y 28-28
+  note  body.stl (untextured): 11910 mm2 facing down. The biggest areas, at height z above the bed:
+          z    45:   8101 mm2 over x 3-137, y 3-85
           z   108:   2829 mm2 over x 3-137, y 121-142
-          z    48:    346 mm2 over x 3-137, y 84-86
+          z    48:    330 mm2 over x 3-137, y 81-86
           z     3:    171 mm2 over x 3-137, y 3-142
-          z    99:    114 mm2 over x 19-121, y 115-117
+          z    99:    140 mm2 over x 14-126, y 115-124
           z    36:    101 mm2 over x 39-101, y 23-78
 
 All checks passed.

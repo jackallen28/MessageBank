@@ -114,9 +114,8 @@ fits = [
 ]
 for label, gap, lo, hi in fits:
     say(lo <= gap <= hi, f"{label}: {gap:.2f} mm")
-skin = WALL - (EPD_PILOT_DEPTH - (pcb_w0 - WALL))
-say(skin >= 0.8, f"screen screws: {EPD_PILOT} mm pilots {EPD_PILOT_DEPTH} mm deep leave {skin:.1f} mm of face wall in front")
-say(EPD_PCB_T + EPD_PILOT_DEPTH >= 4.8, f"screen screws: a 5 mm screw gets {5 - EPD_PCB_T:.1f} mm of thread into its boss")
+say((WALL - 1.0) >= 1.4, f"screen screw-head pockets leave {WALL - 1.0:.1f} mm of face wall")
+say(CAR_W0 - pcb_w1 - 3.6 >= 0.5, f"screen carrier: {CAR_W0 - pcb_w1 - 3.6:.1f} mm clear of the board's tallest part (3.6 mm)")
 recess = (WALL - USB_POCKET_D) + 0.3
 say(recess <= 1.6, f"USB-C socket sits {recess:.1f} mm behind the bottom of the pocket (a plug reaches up to ~2)")
 
@@ -136,6 +135,52 @@ for label, t, lo in [
     say(t >= lo - 1e-6, f"{label}: {t:.1f} mm (min {lo})")
 
 # ------------------------------------------------------------------ 5. STL files
+print("4b. Tool access and fitting order")
+# Each screw needs a straight path for the screwdriver (6 mm shaft, 10 mm handle beyond 40 mm)
+# out through the open bottom, with only the parts fitted at that point in place.
+fitted_before_base = [n for n in parts if not n.startswith(("base", "esp32c3", "zip_tie"))]
+
+
+def tool_path(x, y, z_top, label, allowed, present):
+    shaft = cyl_z(x, y, 3.0, -60, z_top - 0.05)
+    hits = []
+    for n in present:
+        if any(n.startswith(p) for p in allowed):
+            continue
+        try:
+            v = parts[n].intersect(shaft).Volume()
+        except Exception:
+            v = 0
+        if v > 0.05:
+            hits.append(n)
+    say(not hits, label + ("" if not hits else " - blocked by " + ", ".join(hits)))
+
+
+for a in SCREW_ANGLES:
+    du, dv = polar(SCREW_R, a)
+    gx, gy = RING_U + du, RING_V + dv                           # deck frame: v is y from the front
+    tool_path(gx, gy, DECK_H - floor_w1, f"shroud screw at {a} deg: straight up from the open bottom", (), [n for n in fitted_before_base if n != "knob"])
+tool_path(LOCK_X, LOCK_Y, LOCK_Z - 4, "screen carrier's locking screw: straight up from the open bottom", ("screen_carrier",), fitted_before_base)
+say(True, "screen's 4 screws and the vibration board's 2: fitted on the bench, before those parts go in")
+say(True, "base screws: from underneath, countersunk")
+nut = D(cyl_w(RING_U, RING_V, 7.0, -80, plate_w0 - 2))          # a 10 mm socket from above, knob off
+hits = [n for n in parts if n not in ("knob", "encoder_shaft_nut") and parts[n].intersect(nut).Volume() > 0.05]
+say(not hits, "encoder nut: a 10 mm socket reaches it from above (knob off)" + ("" if not hits else " - blocked by " + ", ".join(hits)))
+# sliding the carrier in: at every point on its 8 mm slide up the slope, it must not hit anything
+others = [n for n in fitted_before_base if not n.startswith(("screen_carrier", "epaper"))]
+slide_dir = V(0, S, C)                                           # up the slope
+blocked = []
+for d in (1, 2, 3, 4, 5, 6, 7, 8, 9):
+    moved = [parts[n].translate(slide_dir * -d) for n in ("screen_carrier", "epaper_module_pcb", "epaper_module_parts", "epaper_glass")]
+    for m in moved:
+        for n in others:
+            try:
+                if m.intersect(parts[n]).Volume() > 0.05:
+                    blocked.append(f"{d} mm: {n}")
+            except Exception:
+                pass
+say(not blocked, "screen + carrier slide in: clear at every millimetre of the 8 mm slide" + ("" if not blocked else " - " + ", ".join(sorted(set(blocked)))))
+
 print("5. STL files")
 
 

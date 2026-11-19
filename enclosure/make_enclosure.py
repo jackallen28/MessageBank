@@ -64,7 +64,7 @@ EPD_TAPE = 0.4                 # foam tape between glass and the wall
 SCREW_PILOT = 2.5              # every screw is the same small self-tapper (about 3 mm), in 2.5 mm pilot holes
 SCREW_CLEAR = 3.3              # ...and through 3.3 mm clearance holes
 EPD_PILOT = SCREW_PILOT        # the screen's 4 screws go through the board's own 3.2 mm holes
-EPD_PILOT_DEPTH = 3.2          # leaves 0.9 mm of the face wall in front of each: screws 5 mm long at most
+EPD_PILOT_DEPTH = 3.2          # (no longer used: the screen screws into the carrier, see below)
 
 # LED ring, diffuser, shroud, knob
 RING_OD, RING_ID, RING_T = 50.0, 36.0, 1.6
@@ -192,15 +192,52 @@ body = body.cut(F(cut))
 # -- the round opening in the deck for the shroud
 body = body.cut(D(cyl_w(RING_U, RING_V, SLEEVE_R_OUT + 0.2, -1, WALL + 1)))
 
-# -- screw bosses inside the screen face and under the deck
+# -- the screen. A straight screwdriver can't reach screws in the sloped face from the open bottom
+# (the rear wall is in the way), so the e-paper is screwed to a printed CARRIER on the bench (4
+# screws from the front, through its corner holes, heads in shallow pockets in the face). The
+# carrier slides up the slope 8 mm into two short rails inside the face, against a stop, and one
+# screw from underneath, through the carrier's arm into a boss under the deck roof, locks it.
+# Tightening that screw lifts the carrier, which presses the screen against the window and up
+# into the stop.
 pcb_w0 = WALL + EPD_TAPE + PANEL_T              # front of the e-paper board
-bosses, pilots = [], []
-for du in (EPD_HOLE_INSET, EPD_PCB_L - EPD_HOLE_INSET):
-    for dv in (EPD_HOLE_INSET, EPD_PCB_W - EPD_HOLE_INSET):
-        u, v = EPD_U0 + du, EPD_V0 + dv
-        bosses.append(cyl_w(u, v, 3.0, WALL - 0.5, pcb_w0))
-        pilots.append(cyl_w(u, v, EPD_PILOT / 2, pcb_w0 - EPD_PILOT_DEPTH, pcb_w0 + 0.1))  # small self-tapper, max 5 mm
-body = body.fuse(F(union(*bosses))).cut(F(union(*pilots)))
+pcb_w1 = pcb_w0 + EPD_PCB_T
+CAR_W0 = pcb_w1 + 4.5                           # carrier plate front: clears the board's parts (3.6 mm)
+CAR_W1 = CAR_W0 + 2.0
+car_u0, car_u1 = EPD_U0 - 4, EPD_U0 + EPD_PCB_L + 4
+car_v0, car_v1 = EPD_V0 - 1, EPD_V0 + EPD_PCB_W + 1
+CAR_SLIDE = 8.0                                 # it goes in this much lower, then slides up
+RAIL_L = CAR_SLIDE - 1.0                        # rails grip the top 7 mm
+LOCK_X = 28.0                                   # the locking screw, across the width
+LOCK_Y = 82.0                                   # ...and front to back (under the deck roof)
+LOCK_Z = 41.0                                   # top of the carrier's arm
+epd_holes = [(EPD_U0 + du, EPD_V0 + dv) for du in (EPD_HOLE_INSET, EPD_PCB_L - EPD_HOLE_INSET)
+             for dv in (EPD_HOLE_INSET, EPD_PCB_W - EPD_HOLE_INSET)]
+# pockets in the face for the 4 screw heads (the screws come from the front of the board)
+body = body.cut(F(union(*[cyl_w(u, v, 3.6, WALL - 1.0, WALL + 0.1) for u, v in epd_holes])))
+rails = []
+for side in (-1, 1):
+    e = car_u0 if side < 0 else car_u1
+    post = (e - 2.5, e - 0.2) if side < 0 else (e + 0.2, e + 2.5)
+    lip = (e - 2.5, e + 3.0) if side < 0 else (e - 3.0, e + 2.5)
+    rails.append(box(post[0], post[1], WALL - 0.5, CAR_W1 + 2.1, car_v1 - RAIL_L, car_v1 + 2.2))  # side wall
+    rails.append(box(lip[0], lip[1], CAR_W1 + 0.15, CAR_W1 + 2.1, car_v1 - RAIL_L, car_v1 + 2.2))  # lip behind
+    rails.append(box(lip[0], lip[1], WALL - 0.5, CAR_W1 + 2.1, car_v1 + 0.2, car_v1 + 2.2))       # top stop
+body = body.fuse(F(union(*rails)))
+lock_boss = cyl_z(LOCK_X, LOCK_Y, 4.5, LOCK_Z + 0.3, DECK_H - 0.5).intersect(outer)
+body = body.fuse(lock_boss).cut(cyl_z(LOCK_X, LOCK_Y, SCREW_PILOT / 2, LOCK_Z + 0.2, DECK_H - 1.0))
+
+# the carrier itself (printed): a 2 mm plate behind the board, open in the middle and round the
+# header, with 4 bosses for the board's screws, and an arm down to the locking screw
+car = box(car_u0, car_u1, CAR_W0, CAR_W1, car_v0, car_v1)
+car = car.cut(box(EPD_U0 + 12, EPD_U0 + EPD_PCB_L - 22, CAR_W0 - 1, CAR_W1 + 1, EPD_V0 + 9, EPD_V0 + EPD_PCB_W - 9))
+car = car.cut(box(EPD_U0 + 97, car_u1 + 1, CAR_W0 - 1, CAR_W1 + 1, EPD_V0 + 5, EPD_V0 + 19.5))   # header
+for u, v in epd_holes:
+    car = car.fuse(cyl_w(u, v, 3.0, pcb_w1 + 0.05, CAR_W0 + 0.01)).cut(cyl_w(u, v, SCREW_PILOT / 2, pcb_w1 - 0.1, CAR_W1 + 0.1))
+car = car.fuse(box(LOCK_X - 6, LOCK_X + 6, CAR_W0 - 2, CAR_W1, -4, car_v0 + 0.01))   # leg down the slope
+carrier = F(car).fuse(box(LOCK_X - 6, LOCK_X + 6, LOCK_Y - 5, LOCK_Y + 10, LOCK_Z - 4, LOCK_Z))   # arm
+carrier = carrier.intersect(F(box(-50, W + 50, -60, CAR_W1, -80, FACE_L + 20)))   # flat back: prints on it
+carrier = carrier.cut(cyl_z(LOCK_X, LOCK_Y, SCREW_CLEAR / 2, LOCK_Z - 5, LOCK_Z + 1)).clean()
+carrier = carrier.Solids()[0] if len(carrier.Solids()) == 1 else carrier
 w_led_front = DIFF_T + DIFF_GAP                # tops of the LEDs
 w_ring_front = w_led_front + LED_H
 floor_w0 = w_ring_front + RING_T               # the LED ring sits on the shroud's channel floor
@@ -427,6 +464,7 @@ asm.add(F(panel), name="epaper_glass", color=GLASS)
 asm.add(F(active), name="epaper_active_area", color=EINK)
 asm.add(F(cq.Compound.makeCompound(epd_pcb)), name="epaper_module_pcb", color=PCB_BLACK)
 asm.add(F(cq.Compound.makeCompound(epd_parts)), name="epaper_module_parts", color=METAL)
+asm.add(carrier, name="screen_carrier", color=cq.Color(0.25, 0.25, 0.27))
 asm.add(esp_pcb, name="esp32c3_pcb", color=PCB_BLACK)
 asm.add(esp_usb, name="esp32c3_usb_c", color=METAL)
 asm.add(esp_parts, name="esp32c3_parts", color=cq.Color(0.3, 0.3, 0.3))
@@ -467,6 +505,10 @@ shroud_flat = shroud.rotate(V(0, 0, 0), V(1, 0, 0), -90)   # flange on the bed: 
 bb = shroud_flat.BoundingBox()
 stl(shroud_flat.translate(V(-bb.xmin, -bb.ymin, -bb.zmin)), "light_shroud.stl", 0.02)
 stl(diffuser.rotate(V(0, 0, 0), V(1, 0, 0), 90), "diffuser.stl", 0.02)
+# the carrier: back of the plate on the bed (bosses up)
+_c = carrier.rotate(V(0, 0, 0), V(1, 0, 0), SCREEN_TILT).rotate(V(0, 0, 0), V(1, 0, 0), -90)
+_b = _c.BoundingBox()
+stl(_c.translate(V(-_b.xmin, -_b.ymin, -_b.zmin)), "screen_carrier.stl")
 print("wrote print/*.stl")
 
 # for previews and checks
