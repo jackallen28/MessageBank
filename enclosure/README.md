@@ -8,8 +8,8 @@ with the knob on top, rising at the back into a block whose sloped face holds th
 - **Screen:** the 3.7" e-paper sits landscape on the face, which leans back **30°** from
   vertical so it's easy to read from a chair.
 - **Knob and ring:** the printed knob stands up out of the deck. Round it, a **0.4 mm white
-  diffuser** sits **10 mm above the WS2812 LEDs**, held in a **black light shroud** whose walls
-  stop light bleeding into the **green body**.
+  diffuser** band (20–40 mm across) sits **10 mm above the WS2812 LEDs**. It's framed by a wide
+  black bezel on the **black light shroud**, whose walls stop light bleeding into the **green body**.
 - **Deck height:** the deck is 48.5 mm tall, so the encoder has **35 mm under its mounting
   face** for its wires.
 - **Finish:** the walls are ribbed (1 mm grooves every 2 mm, 0.6 mm deep), running the same way
@@ -31,7 +31,7 @@ with the knob on top, rising at the back into a block whose sloped face holds th
 | `MessageBox-enclosure.step` | The whole assembly with colours: every printed part and every component in place. Opens in Fusion, FreeCAD, Onshape, SolidWorks and others. |
 | `print/body.stl` | Green. Prints **upright, open side down**. |
 | `print/base.stl` | Green. Prints flat, ridge and posts up. |
-| `print/light_shroud.stl` | Black. Prints flange-down. |
+| `print/light_shroud.stl` | Black. Prints flange-down. Revised for the 37 mm ring and 13 × 13 encoder; fits the same body. |
 | `print/diffuser.stl` | White. A 0.4 mm flat ring. |
 | `print/screen_carrier.stl` | Any colour (hidden). Holds the e-paper. Prints flat on its back, no supports. |
 | `print/knob.stl` | Black. A 20 mm knob with a plain top and thimble dimples round the side. Prints top-down. |
@@ -54,7 +54,9 @@ every check.
 | LED ring | Its wired pins drop through a 50° slot in the channel floor, with 15 mm clear below |
 | E-paper header | 25 mm clear behind it |
 | USB-C | 13 × 8 plug body in a 14.5 × 9 pocket; the socket sits 1.3 mm behind it, so any cable reaches |
-| Diffuser | 0.3 mm gap each side; rests on 0.7 mm ledges at both edges |
+| LED ring (37 mm OD, 23 mm hole) | 0.5 mm round the outside, 0.4 mm over the centre column |
+| Encoder (13 × 13 square body) | Square pocket, 0.33 mm per side as printed; it also stops the encoder turning |
+| Diffuser | 0.3 mm gap in the bezel; rests on a 1 mm ledge outside and the centre column (2 mm) inside |
 | Shroud in the deck | 0.3 mm gap; screen carrier in its rails 0.35 mm; base in the body 0.4 mm |
 | Knob | 0.5 mm above the deck, 5 mm clear of the diffuser; covers the nut pocket |
 | Nut pocket | 15.5 mm, so a 10 mm socket fits |
@@ -74,7 +76,8 @@ the sizes below are what fits **after** printing. Every value is a parameter at 
 | Fit | Gap per side, as drawn | Parameter |
 |---|---|---|
 | Light shroud into the deck opening | 0.30 mm | `FIT_SLIDE` |
-| Diffuser between the shroud lip and the hub | 0.30 mm | `FIT_SLIDE` |
+| Diffuser in the bezel | 0.30 mm | `FIT_SLIDE` |
+| Encoder body (13 × 13) in its square pocket | 0.33 mm | `ENC_POCKET` |
 | Screen carrier in its rails (sides, behind, top stop) | 0.35 mm | `FIT_RAIL` |
 | Base inside the body | 0.40 mm, plus a 0.5 mm chamfer round its underside | `FIT_BASE`, `EF_CHAMFER` |
 | ESP32-C3 against its stop | 0.3 mm play | |
@@ -109,7 +112,7 @@ them on the encoder and the LED ring before the long body print. If the knob is 
 |---|---|---|---|---|
 | Body | Green | Upright, open side down (as exported) | 0.2 mm layers, 3 walls, 15 % infill | **Tree supports, from the build plate and on the model.** They only form inside: under the deck roof, the roof behind the screen, the screen window's top edge, the four corner posts and the screw bosses. The outside needs none. |
 | Base | Green | Flat, ridge and posts up | 0.2 mm, 3 walls, 20 % | None. The zip-tie groove and foot recesses underneath are short bridges. |
-| Light shroud | **Black** | Flange down | 0.2 mm, **100 % infill** so no light gets through | None. The encoder plate over the hub is a 20 mm round bridge. |
+| Light shroud | **Black** | Flange down | 0.2 mm, **100 % infill** so no light gets through | None. The encoder plate over the square pocket is a 14 mm bridge. |
 | Diffuser | White PLA/PETG | Flat | 0.2 mm (exactly two layers), 100 %, concentric top pattern | None |
 | Screen carrier | Any | Flat on its back (as exported) | 0.2 mm, 3 walls, 20 % | None |
 | Knob | Black | Top down (as exported) | 0.12–0.16 mm layers for crisp dimples, 100 % | None. Use a brim if it wobbles. |
@@ -127,7 +130,7 @@ Notes:
 
 ![Cut through the knob](ring-section.png)
 
-The 12 LEDs are 11.3 mm apart round the ring. A 0.4 mm diffuser is thin and lets a lot of light
+On the original 50 mm ring the 12 LEDs were 11.3 mm apart; on your 37 mm ring they're only 7.9 mm apart, so the band is even smoother than the table below. A 0.4 mm diffuser is thin and lets a lot of light
 straight through, so it shows the LEDs as dots unless their light has spread before it gets
 there. Modelling each WS2812B as a wide-angle (120°) emitter:
 
@@ -149,9 +152,9 @@ those are exact. Everything else is from datasheets and listings:
 
 | Part | Assumed | Parameter |
 |---|---|---|
-| LED ring | 50 mm across, 36 mm hole, 1.6 mm board | `RING_OD`, `RING_ID` |
+| LED ring | **Measured:** 37 mm across, 23 mm hole. Board thickness 1.6 mm assumed | `RING_OD`, `RING_ID` |
 | Glass border on the ribbon end of the e-paper | 7.0 mm (4.45 mm at the other end). If the window shows a strip of border, change it. | `ACTIVE_FPC_BORDER` |
-| Encoder module | 26 mm round board; shaft 20 mm from the mounting face, knurled 6 mm | `ENC_SHAFT_L`, `KNOB_BORE` |
+| Encoder module | **Measured:** 13 × 13 mm body. Shaft 20 mm from the mounting face, knurled 6 mm | `ENC_SQ`, `ENC_SHAFT_L`, `KNOB_BORE` |
 | Vibration board | 21 × 25 mm, two holes 18 mm apart on the wire edge | `VIB_*` |
 | ESP32-C3 SuperMini | 22.5 × 18 mm; USB-C sticking out 1 mm | `ESP_*`, `USB_*` |
 
@@ -183,16 +186,17 @@ Work through the open bottom, with the body upside down on a soft cloth. The ord
 each step leaves a straight path for the next screw.
 
 1. **Light shroud (bench):**
-   - Drop the LED ring into the shroud's channel, LEDs up. Turn it so its wired pins drop through
-     the arc slot behind the knob.
-   - Lay the 0.4 mm diffuser on top. It rests on a step on the outer wall and one on the black
-     hub. A thin bead of clear glue round its outer edge holds it.
-2. **Encoder (bench):** push its bushing up through the shroud's centre hole from underneath, tab
-   in its groove, and tighten the nut from the top with the 10 mm socket.
+   - Drop the LED ring over the black centre column, LEDs up. Turn it so its wired pins drop
+     through the arc slot behind the knob.
+   - Lay the 0.4 mm diffuser on top. Its outer edge rests on a ledge in the bezel and its inner
+     edge on the top of the centre column. A thin bead of clear glue round its outer edge holds it.
+2. **Encoder (bench):** push its square body up into the square pocket under the centre column,
+   bushing through the hole and tab in its groove. Tighten the nut from the top with the 10 mm
+   socket.
 3. **Vibration board (bench):** screw it flat under the shroud's flange (2 screws), wire edge
    facing right as seen from the front.
 4. **Shroud into the body:** put it up into the deck opening from inside. Drive its 3 screws
-   straight up through the open bottom. The black rim, white ring and black hub end flush with
+   straight up through the open bottom. The black bezel, white ring and black centre end flush with
    the deck.
 5. **Screen (bench, then in):**
    ![The screen carrier](screen-mount.png)

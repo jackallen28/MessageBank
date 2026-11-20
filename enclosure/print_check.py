@@ -82,7 +82,7 @@ clear(F(box(hb.xmin - 2, hb.xmax + 2, hb.ymax, hb.ymax + 25, hb.zmin - 2, hb.zma
 wedge = (cq.Workplane("XZ", origin=(0, floor_w0 + RING_WIRES, 0))
          .polyline([(RING_U, RING_V)] + [(RING_U + 40 * math.cos(math.radians(a)), RING_V + 40 * math.sin(math.radians(a)))
                                          for a in (68, 90, 112)]).close().extrude(RING_WIRES - 0.05).val())
-clear(D(wedge.intersect(ring_w(RING_U, RING_V, RING_ID / 2 + 0.5, RING_OD / 2 - 0.5, floor_w0, floor_w0 + RING_WIRES))),
+clear(D(wedge.intersect(ring_w(RING_U, RING_V, RING_SLOT_R0 + 0.2, RING_OD / 2 - 0.5, floor_w0, floor_w0 + RING_WIRES))),
       ("led",), f"LED ring: its pins drop through the 50 degree slot with {RING_WIRES:.0f} mm clear below the ring")
 clear(D(box(vib_cu + VIB_H / 2 + 0.1, vib_cu + VIB_H / 2 + VIB_WIRES, vib_w0 - 1, vib_w0 + 6, vib_cv - 6, vib_cv + 6)),
       ("vibration",), f"vibration board: {VIB_WIRES:.0f} mm clear off its wire edge")
@@ -90,18 +90,18 @@ clear(D(box(vib_cu + VIB_H / 2 + 0.1, vib_cu + VIB_H / 2 + VIB_WIRES, vib_w0 - 1
 # ------------------------------------------------------------------ 3. fits and tolerances
 print("3. Fits (gap per side)")
 fits = [
-    ("diffuser in the shroud lip (outer)", FIT_SLIDE, 0.25, 0.5),
-    ("diffuser round the hub (inner)", FIT_SLIDE, 0.25, 0.5),
-    ("diffuser rests on the outer ledge", (SLEEVE_R_IN - FIT_SLIDE) - LEDGE_R, 0.5, 9),
-    ("diffuser rests on the hub step", (HUB_R + 1) - (HUB_R + FIT_SLIDE), 0.5, 9),
+    ("diffuser in the black bezel (outer)", FIT_SLIDE, 0.25, 0.5),
+    ("diffuser rests on the channel wall's ledge", DIFF_R_OUT - CHAN_R, 0.7, 9),
+    ("diffuser rests on the centre column", HUB_R - DIFF_R_IN, 0.7, 9),
     ("shroud in the deck opening", FIT_SLIDE, 0.25, 0.5),
     ("screen carrier in its rails (sides, behind, top stop)", FIT_RAIL, 0.3, 0.5),
-    ("LED ring inside the channel (outer)", LEDGE_R - RING_OD / 2, 0.3, 3),
-    ("LED ring round the hub (inner)", RING_ID / 2 - (HUB_R + 1), 0.3, 3),
+    ("LED ring (37 mm) inside the channel (outer)", CHAN_R - RING_OD / 2, 0.3, 3),
+    ("LED ring (23 mm hole) over the centre column", RING_ID / 2 - HUB_R, 0.3, 3),
+    ("encoder body (13 x 13) in its square pocket as printed", (ENC_POCKET - HOLE_COMP - ENC_SQ) / 2, 0.2, 0.6),
     ("base inside the body (plus a 0.5 mm chamfer underneath)", FIT_BASE, 0.3, 0.6),
     ("knob above the deck", KNOB_LIFT, 0.3, 2),
     ("knob bore as printed on the 6 mm knurled shaft (press fit, negative = interference)", (KNOB_BORE - HOLE_COMP - 6.0) / 2, -0.1, 0.0),
-    ("knob (20 mm) clear of the diffuser's inner edge", (HUB_R + FIT_SLIDE) - KNOB_D / 2, 2, 9),
+    ("diffuser's inner edge hidden under the knob", KNOB_D / 2 - DIFF_R_IN, 0.5, 9),
     ("knob covers the nut pocket", KNOB_D / 2 - NUT_POCKET_R, 1, 9),
     ("encoder bushing (7 mm) in its hole as printed", 3.6 - 3.5, 0.05, 0.3),
     ("self-tapper pilot holes as printed", SCREW_PILOT - HOLE_COMP, 2.5, 2.5),
@@ -128,8 +128,8 @@ for label, t, lo in [
     ("body wall at the USB-C pocket", WALL - USB_POCKET_D, 0.8),
     ("base under the zip-tie groove", BASE_T - 1.2, 1.2),
     ("base under a foot recess", BASE_T - 1.0, 1.2),
-    ("shroud outer wall", SLEEVE_R_OUT - LEDGE_R, 1.6),
-    ("shroud lip round the diffuser", SLEEVE_R_OUT - SLEEVE_R_IN, 1.6),
+    ("shroud channel wall / bezel", SLEEVE_R_OUT - CHAN_R, 1.6),
+    ("centre column at the encoder pocket's corners", HUB_R - ENC_POCKET / 2 ** 0.5, 1.2),
     ("shroud channel floor / flange", PLATE_T, 1.6),
     ("encoder plate under the tab groove", PLATE_T - 1.0, 0.8),
     ("diffuser (two 0.2 mm layers)", DIFF_T, 0.4),

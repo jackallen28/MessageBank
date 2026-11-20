@@ -45,7 +45,7 @@ for name in show:
 z_led = DECK_H - w_led_front
 for sgn in (-1, 1):   # the light fills the black channel up to the diffuser
     y0 = RING_V + sgn * r_led
-    inner, outer = RING_V + sgn * (HUB_R + 1), RING_V + sgn * LEDGE_R
+    inner, outer = RING_V + sgn * HUB_R, RING_V + sgn * CHAN_R
     ax.fill([y0 - 2.5, y0 + 2.5, max(inner, outer), min(inner, outer)],
             [z_led, z_led, DECK_H - DIFF_T, DECK_H - DIFF_T], color=(1.0, 0.2, 0.45), alpha=0.22, lw=0)
 ax.set_xlim(RING_V - 45, RING_V + 45)
@@ -62,11 +62,11 @@ ax.annotate(f"white diffuser, {DIFF_T} mm", xy=(y_r, DECK_H - DIFF_T / 2), xytex
             arrowprops=dict(arrowstyle="-", color="#555", lw=0.7), **kw)
 ax.annotate("black shroud: its walls stop the light\nreaching the green body", xy=(RING_V - SLEEVE_R_OUT + 1, DECK_H - 6),
             xytext=(RING_V - 44, DECK_H + 12), arrowprops=dict(arrowstyle="-", color="#555", lw=0.7), **kw)
-ax.annotate("WS2812B ring (12 LEDs, 11.3 mm apart)", xy=(RING_V + r_led, z_led - 1), xytext=(RING_V + 8, DECK_H + 17),
+ax.annotate(f"WS2812B ring (12 LEDs, {2 * math.pi * r_led / 12:.1f} mm apart)", xy=(RING_V + r_led, z_led - 1), xytext=(RING_V + 8, DECK_H + 17),
             arrowprops=dict(arrowstyle="-", color="#555", lw=0.7), **kw)
 ax.annotate("encoder", xy=(RING_V + 5, DECK_H - plate_w1 - 4), xytext=(RING_V + 14, DECK_H - 24),
             arrowprops=dict(arrowstyle="-", color="#555", lw=0.7), **kw)
-ax.annotate("vibration motor", xy=(vib_cv + 3, DECK_H - vib_w0 - 3), xytext=(RING_V - 37.5, DECK_H - 26.5),
+ax.annotate("encoder board", xy=(vib_cv + 3, DECK_H - vib_w0 - 3), xytext=(RING_V - 37.5, DECK_H - 26.5),
             arrowprops=dict(arrowstyle="-", color="#555", lw=0.7), **kw)
 ax.set_title("Cut through the knob, front (left) to back (right)", fontsize=10, color="#222")
 out = os.path.join(HERE, "ring-section.png")

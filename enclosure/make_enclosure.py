@@ -73,17 +73,21 @@ EPD_PILOT = SCREW_PILOT        # the screen's 4 screws go through the board's ow
 EPD_PILOT_DEPTH = 3.2          # (no longer used: the screen screws into the carrier, see below)
 
 # LED ring, diffuser, shroud, knob
-RING_OD, RING_ID, RING_T = 50.0, 36.0, 1.6
+RING_OD, RING_ID, RING_T = 37.0, 23.0, 1.6   # 12-LED WS2812B ring (measured)
 LED = 5.0                      # WS2812B 5050
 LED_H = 1.6
 DIFF_T = 0.4                   # diffuser thickness (two 0.2 mm layers of white PLA/PETG)
-DIFF_GAP = 10.0                # LED tops to the diffuser. 12 LEDs on a 43 mm circle are 11.3 mm
-                               # apart; at 10 mm the light between two LEDs is within ~9 % of the
-                               # light over one, so the ring reads as one smooth band (see README)
-HUB_R = 15.0                   # black centre disc around the knob (the diffuser rests on a step at r+1)
+DIFF_GAP = 10.0                # LED tops to the diffuser. 12 LEDs on a 30 mm circle are 7.9 mm
+                               # apart; at 10 mm the band is smooth (see README)
+HUB_R = RING_ID / 2 - 0.4      # black centre column: the LED ring drops over it (0.4 mm gap)
+RING_SLOT_R0 = 13.6           # the pin slot starts here: outside the encoder's board below (pads sit near the ring's outer edge)
+DIFF_R_IN = 9.0                # the diffuser's inner edge rests on the column top, hidden under the knob
+CHAN_R = RING_OD / 2 + 0.5     # outer wall of the LED channel (0.5 mm round the ring)
+DIFF_R_OUT = CHAN_R + 1.0      # the diffuser's outer edge rests on a 1 mm ledge on that wall
 ENC_PLATE_W = 8.2              # depth of the plate the encoder screws to (inside the hub)
-SLEEVE_R_IN, SLEEVE_R_OUT = 27.0, 29.0   # black outer wall
-LEDGE_R = 26.0                 # the diffuser rests on this step
+ENC_SQ = 13.0                  # the encoder's square body (measured 13 x 13)
+ENC_POCKET = ENC_SQ + 0.65 + HOLE_COMP   # square pocket in the column: ~0.33 mm per side as printed
+SLEEVE_R_OUT = 29.0            # outside of the shroud: fixed by the deck opening in the printed body
 PLATE_T = 2.0                  # encoder plate and LED-channel floor thickness
 FLANGE_R = 37.0
 SCREW_R = 33.0                 # shroud screws (M2.5 x 8, self-tapping)
@@ -330,19 +334,21 @@ tie = union(box(tie_x[0] - 0.5, tie_x[1] + 0.5, esp_mid - TIE_W / 2, esp_mid + T
 
 # ============================================================== light shroud (black)
 
-HUB_IN = 10.0   # inside the hub below the encoder plate (the encoder body is 12 x 12.5 mm)
-NUT_POCKET_R = 7.75  # the knob (15 mm) covers it
+NUT_POCKET_R = 7.75  # the knob (20 mm) covers it
+# A solid black ring from the LED channel out to the deck opening, so the white band is framed
+# by a wide black bezel; a black column in the middle carries the encoder and the diffuser's
+# inner edge. The channel between them holds the ring.
 sh = union(
-    ring_w(RING_U, RING_V, SLEEVE_R_IN, SLEEVE_R_OUT, 0, DIFF_T),          # top lip (round the diffuser)
-    ring_w(RING_U, RING_V, LEDGE_R, SLEEVE_R_OUT, DIFF_T, floor_w0),       # outer wall, with the diffuser's ledge
-    cyl_w(RING_U, RING_V, HUB_R, 0, DIFF_T),                               # black disc round the knob
-    cyl_w(RING_U, RING_V, HUB_R + 1, DIFF_T, plate_w1),                    # hub (the diffuser rests on its step)
-    ring_w(RING_U, RING_V, HUB_IN, HUB_R + 1, plate_w1, floor_w0),         # hub wall down to the floor
-    ring_w(RING_U, RING_V, HUB_IN, FLANGE_R, floor_w0, floor_w1),          # LED channel floor + flange
+    ring_w(RING_U, RING_V, DIFF_R_OUT + FIT_SLIDE, SLEEVE_R_OUT, 0, DIFF_T),  # bezel round the diffuser
+    ring_w(RING_U, RING_V, CHAN_R, SLEEVE_R_OUT, DIFF_T, floor_w0),          # channel wall (its top is the diffuser's ledge)
+    cyl_w(RING_U, RING_V, HUB_R, DIFF_T, floor_w0),                          # centre column (its top carries the diffuser)
+    cyl_w(RING_U, RING_V, FLANGE_R, floor_w0, floor_w1),                     # channel floor + flange
 )
 sh = sh.cut(cyl_w(RING_U, RING_V, NUT_POCKET_R, -1, plate_w0))             # pocket: room for a 10 mm socket on the nut
 sh = sh.cut(ring_w(RING_U, RING_V, 5.6, 8.9, plate_w1 - 1.0, plate_w1 + 0.1))  # groove for the encoder's anti-rotation tab
 sh = sh.cut(cyl_w(RING_U, RING_V, 3.6 + HOLE_COMP / 2, plate_w0 - 1, plate_w1 + 1))  # 7 mm bushing: prints ~7.2
+sh = sh.cut(box(RING_U - ENC_POCKET / 2, RING_U + ENC_POCKET / 2, plate_w1, floor_w1 + 1,
+                RING_V - ENC_POCKET / 2, RING_V + ENC_POCKET / 2))       # square pocket for the encoder body (also stops it turning)
 for a in SCREW_ANGLES:
     du, dv = polar(SCREW_R, a)
     sh = sh.cut(cyl_w(RING_U + du, RING_V + dv, SCREW_CLEAR / 2, floor_w0 - 1, floor_w1 + 1))
@@ -351,7 +357,7 @@ for a in SCREW_ANGLES:
 slot = (cq.Workplane("XZ", origin=(0, floor_w1 + 1, 0))
         .polyline([(RING_U, RING_V)] + [(RING_U + 40 * math.cos(math.radians(a)), RING_V + 40 * math.sin(math.radians(a)))
                                         for a in (65, 90, 115)]).close().extrude(PLATE_T + 2).val())
-sh = sh.cut(slot.intersect(ring_w(RING_U, RING_V, RING_ID / 2 + 0.3, RING_OD / 2 - 0.3, floor_w0 - 1, floor_w1 + 2)))
+sh = sh.cut(slot.intersect(ring_w(RING_U, RING_V, RING_SLOT_R0, RING_OD / 2 - 0.3, floor_w0 - 1, floor_w1 + 2)))
 # the vibration board screws flat to the underside of the flange (rigid, so the ticks reach the
 # knob): two M2 screws from below into bosses on top of the flange
 vib_cu, vib_cv = RING_U + VIB_OFF, RING_V
@@ -362,7 +368,7 @@ shroud = sh.clean()
 
 # ============================================================== diffuser (white)
 
-diffuser = ring_w(RING_U, RING_V, HUB_R + FIT_SLIDE, SLEEVE_R_IN - FIT_SLIDE, 0, DIFF_T)
+diffuser = ring_w(RING_U, RING_V, DIFF_R_IN, DIFF_R_OUT, 0, DIFF_T)
 
 # ============================================================== bought parts
 
@@ -378,7 +384,7 @@ for k in range(12):
 leds = union(*leds)
 
 # EC11 encoder module: body, bushing, nut, shaft, round board with 5 pins
-enc_body = box(RING_U - 6, RING_U + 6, plate_w1, plate_w1 + 6.5, RING_V - 6.25, RING_V + 6.25)
+enc_body = box(RING_U - ENC_SQ / 2, RING_U + ENC_SQ / 2, plate_w1, plate_w1 + 6.5, RING_V - ENC_SQ / 2, RING_V + ENC_SQ / 2)
 enc_metal = union(cyl_w(RING_U, RING_V, 3.5, plate_w1 - 7, plate_w1),
                   cyl_w(RING_U, RING_V, 4.9, plate_w0 - 2, plate_w0),
                   cyl_w(RING_U, RING_V, KNOB_BORE / 2, plate_w1 - ENC_SHAFT_L, plate_w1 - 7))  # (as pressed into the knob)
