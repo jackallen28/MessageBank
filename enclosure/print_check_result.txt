@@ -1,8 +1,8 @@
 1. Solids and overlaps
   ok    body: valid, 1 solid, 133.9 cm3
   ok    base: valid, 1 solid, 55.8 cm3
-  ok    light_shroud: valid, 1 solid, 31.4 cm3
-  ok    diffuser: valid, 1 solid, 0.4 cm3
+  ok    light_shroud: valid, 1 solid, 31.2 cm3
+  ok    diffuser: valid, 1 solid, 0.5 cm3
   ok    no parts overlap
 2. Wire clearances
   ok    encoder: 35.3 mm from its mounting face down to the base (needs 35)
@@ -14,7 +14,11 @@
 3. Fits (gap per side)
   ok    diffuser in the black bezel (outer): 0.30 mm
   ok    diffuser rests on the channel wall's ledge: 1.00 mm
-  ok    diffuser rests on the centre column: 2.10 mm
+  ok    diffuser rests on the centre column: 2.50 mm
+  ok    snap tab hook: interference as drawn (the tab bends this far): 0.20 mm
+  ok    snap tab: room to bend inward in its pocket: 0.55 mm
+  ok    snap tab: side clearance in its pocket: 0.29 mm
+  ok    snap hook in its undercut (radial / vertical play): 0.10 mm
   ok    shroud in the deck opening: 0.30 mm
   ok    screen carrier in its rails (sides, behind, top stop): 0.35 mm
   ok    LED ring (37 mm) inside the channel (outer): 0.50 mm
@@ -23,7 +27,7 @@
   ok    base inside the body (plus a 0.5 mm chamfer underneath): 0.40 mm
   ok    knob above the deck: 0.50 mm
   ok    knob bore as printed on the 6 mm knurled shaft (press fit, negative = interference): -0.08 mm
-  ok    diffuser's inner edge hidden under the knob: 1.00 mm
+  ok    diffuser's inner edge hidden under the knob: 1.40 mm
   ok    knob covers the nut pocket: 2.25 mm
   ok    encoder bushing (7 mm) in its hole as printed: 0.10 mm
   ok    self-tapper pilot holes as printed: 2.50 mm
@@ -35,6 +39,7 @@
   ok    ESP32-C3 between its stop and the rear wall (play): 0.30 mm
   ok    zip tie (2 x 1 mm) in its slots, width: 0.40 mm
   ok    zip tie in its slots, thickness: 0.40 mm
+  ok    diffuser snap tabs bend at 1.2 % strain (PLA/PETG are fine below 1.5 %)
   ok    screen screw-head pockets leave 1.5 mm of face wall
   ok    screen carrier: 0.9 mm clear of the board's tallest part (3.6 mm)
   ok    USB-C socket sits 1.3 mm behind the bottom of the pocket (a plug reaches up to ~2)
@@ -48,6 +53,8 @@
   ok    shroud channel floor / flange: 2.0 mm (min 1.6)
   ok    encoder plate under the tab groove: 1.0 mm (min 0.8)
   ok    diffuser (two 0.2 mm layers): 0.4 mm (min 0.4)
+  ok    centre column between a snap pocket and the channel: 0.4 mm (min 0.4)
+  ok    centre column between a snap pocket and the nut pocket: 1.0 mm (min 0.8)
 4b. Tool access and fitting order
   ok    shroud screw at 90 deg: straight up from the open bottom
   ok    shroud screw at 210 deg: straight up from the open bottom
@@ -62,11 +69,11 @@
   ok    base.stl: 134 x 139 x 8 mm, flat on the bed, fits 220 x 220 x 250
   ok    body.stl: watertight (86750 triangles)
   ok    body.stl: 140 x 145 x 111 mm, flat on the bed, fits 220 x 220 x 250
-  ok    diffuser.stl: watertight (1008 triangles)
-  ok    diffuser.stl: 40 x 40 x 0 mm, flat on the bed, fits 220 x 220 x 250
+  ok    diffuser.stl: watertight (1428 triangles)
+  ok    diffuser.stl: 40 x 40 x 7 mm, flat on the bed, fits 220 x 220 x 250
   ok    knob.stl: watertight (65256 triangles)
   ok    knob.stl: 20 x 20 x 16 mm, flat on the bed, fits 220 x 220 x 250
-  ok    light_shroud.stl: watertight (8290 triangles)
+  ok    light_shroud.stl: watertight (8686 triangles)
   ok    light_shroud.stl: 74 x 74 x 16 mm, flat on the bed, fits 220 x 220 x 250
   ok    screen_carrier.stl: watertight (4652 triangles)
   ok    screen_carrier.stl: 114 x 77 x 15 mm, flat on the bed, fits 220 x 220 x 250
@@ -74,16 +81,18 @@
   note  base.stl: 646 mm2 facing down. The biggest areas, at height z above the bed:
           z     0:    646 mm2 over x 3-137, y 3-142
           z     3:      0 mm2 over x 136-136, y 6-139
-  ok    diffuser.stl: no supports needed
+  note  diffuser.stl: 5 mm2 facing down. The biggest areas, at height z above the bed:
+          z     6:      5 mm2 over x 60-80, y -52--35
   note  knob.stl: 147 mm2 facing down. The biggest areas, at height z above the bed:
           z    12:     41 mm2 over x -10-10, y -10-10
           z     9:     41 mm2 over x -10-10, y -10-10
           z     0:     23 mm2 over x -9-9, y -9-9
           z     6:     21 mm2 over x -10-10, y -10-10
           z     3:     21 mm2 over x -10-10, y -10-10
-  note  light_shroud.stl: 223 mm2 facing down. The biggest areas, at height z above the bed:
+  note  light_shroud.stl: 228 mm2 facing down. The biggest areas, at height z above the bed:
           z     6:    209 mm2 over x 29-45, y 29-45
           z     3:     13 mm2 over x 72-74, y 26-48
+          z     9:      5 mm2 over x 27-47, y 30-48
   note  screen_carrier.stl: 11 mm2 facing down. The biggest areas, at height z above the bed:
           z     9:      4 mm2 over x 14-16, y 3-3
           z    12:      4 mm2 over x 14-16, y 4-4

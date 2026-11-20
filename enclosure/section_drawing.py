@@ -66,6 +66,8 @@ ax.annotate(f"WS2812B ring (12 LEDs, {2 * math.pi * r_led / 12:.1f} mm apart)", 
             arrowprops=dict(arrowstyle="-", color="#555", lw=0.7), **kw)
 ax.annotate("encoder", xy=(RING_V + 5, DECK_H - plate_w1 - 4), xytext=(RING_V + 14, DECK_H - 24),
             arrowprops=dict(arrowstyle="-", color="#555", lw=0.7), **kw)
+ax.annotate("diffuser snap tab\n(clicks into the black column)", xy=(RING_V + 9.7, DECK_H - 4.5), xytext=(RING_V + 22, DECK_H - 30),
+            arrowprops=dict(arrowstyle="-", color="#555", lw=0.8), **kw)
 ax.annotate("encoder board", xy=(vib_cv + 3, DECK_H - vib_w0 - 3), xytext=(RING_V - 37.5, DECK_H - 26.5),
             arrowprops=dict(arrowstyle="-", color="#555", lw=0.7), **kw)
 ax.set_title("Cut through the knob, front (left) to back (right)", fontsize=10, color="#222")

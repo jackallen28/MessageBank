@@ -56,7 +56,8 @@ every check.
 | USB-C | 13 × 8 plug body in a 14.5 × 9 pocket; the socket sits 1.3 mm behind it, so any cable reaches |
 | LED ring (37 mm OD, 23 mm hole) | 0.5 mm round the outside, 0.4 mm over the centre column |
 | Encoder (13 × 13 square body) | Square pocket, 0.33 mm per side as printed; it also stops the encoder turning |
-| Diffuser | 0.3 mm gap in the bezel; rests on a 1 mm ledge outside and the centre column (2 mm) inside |
+| Diffuser | 0.3 mm gap in the bezel; rests on a 1 mm ledge outside and the centre column (2.5 mm) inside |
+| Diffuser snap fit | 3 hooked tabs click into undercut pockets in the centre column: 0.2 mm hook, 0.55 mm room to bend, 1.2 % strain, 0.1 mm play when latched |
 | Shroud in the deck | 0.3 mm gap; screen carrier in its rails 0.35 mm; base in the body 0.4 mm |
 | Knob | 0.5 mm above the deck, 5 mm clear of the diffuser; covers the nut pocket |
 | Nut pocket | 15.5 mm, so a 10 mm socket fits |
@@ -77,6 +78,7 @@ the sizes below are what fits **after** printing. Every value is a parameter at 
 |---|---|---|
 | Light shroud into the deck opening | 0.30 mm | `FIT_SLIDE` |
 | Diffuser in the bezel | 0.30 mm | `FIT_SLIDE` |
+| Diffuser snap tabs in their pockets | 0.3 mm each side; the hook overlaps 0.2 mm as drawn (about 0.3 mm as printed) | `SNAP_TAB`, `SNAP_POCKET` |
 | Encoder body (13 × 13) in its square pocket | 0.33 mm | `ENC_POCKET` |
 | Screen carrier in its rails (sides, behind, top stop) | 0.35 mm | `FIT_RAIL` |
 | Base inside the body | 0.40 mm, plus a 0.5 mm chamfer round its underside | `FIT_BASE`, `EF_CHAMFER` |
@@ -113,7 +115,7 @@ them on the encoder and the LED ring before the long body print. If the knob is 
 | Body | Green | Upright, open side down (as exported) | 0.2 mm layers, 3 walls, 15 % infill | **Tree supports, from the build plate and on the model.** They only form inside: under the deck roof, the roof behind the screen, the screen window's top edge, the four corner posts and the screw bosses. The outside needs none. |
 | Base | Green | Flat, ridge and posts up | 0.2 mm, 3 walls, 20 % | None. The zip-tie groove and foot recesses underneath are short bridges. |
 | Light shroud | **Black** | Flange down | 0.2 mm, **100 % infill** so no light gets through | None. The encoder plate over the square pocket is a 14 mm bridge. |
-| Diffuser | White PLA/PETG | Flat | 0.2 mm (exactly two layers), 100 %, concentric top pattern | None |
+| Diffuser | White PLA/PETG (PETG snaps best) | Flat, visible face down, snap tabs up (as exported) | 0.2 mm, 100 %, concentric pattern | None. The hooks overhang only 0.4 mm. |
 | Screen carrier | Any | Flat on its back (as exported) | 0.2 mm, 3 walls, 20 % | None |
 | Knob | Black | Top down (as exported) | 0.12–0.16 mm layers for crisp dimples, 100 % | None. Use a brim if it wobbles. |
 
@@ -188,8 +190,11 @@ each step leaves a straight path for the next screw.
 1. **Light shroud (bench):**
    - Drop the LED ring over the black centre column, LEDs up. Turn it so its wired pins drop
      through the arc slot behind the knob.
-   - Lay the 0.4 mm diffuser on top. Its outer edge rests on a ledge in the bezel and its inner
-     edge on the top of the centre column. A thin bead of clear glue round its outer edge holds it.
+   - **Snap the diffuser on:** line its three tabs (on the inner edge, underneath) up with the
+     three slots in the top of the black centre column, and press round the inner edge until each
+     one clicks. It then sits flush, held down at the centre and resting on the ledge at the edge.
+     No glue needed. It's made to stay put: if you ever need it out, prise up the outer
+     edge with a thin blade. The tabs may snap, but a new diffuser is a 15-minute print.
 2. **Encoder (bench):** push its square body up into the square pocket under the centre column,
    bushing through the hole and tab in its groove. Tighten the nut from the top with the 10 mm
    socket.

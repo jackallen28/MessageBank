@@ -81,7 +81,7 @@ DIFF_GAP = 10.0                # LED tops to the diffuser. 12 LEDs on a 30 mm ci
                                # apart; at 10 mm the band is smooth (see README)
 HUB_R = RING_ID / 2 - 0.4      # black centre column: the LED ring drops over it (0.4 mm gap)
 RING_SLOT_R0 = 13.6           # the pin slot starts here: outside the encoder's board below (pads sit near the ring's outer edge)
-DIFF_R_IN = 9.0                # the diffuser's inner edge rests on the column top, hidden under the knob
+DIFF_R_IN = 8.6                # the diffuser's inner edge rests on the column top, hidden under the knob
 CHAN_R = RING_OD / 2 + 0.5     # outer wall of the LED channel (0.5 mm round the ring)
 DIFF_R_OUT = CHAN_R + 1.0      # the diffuser's outer edge rests on a 1 mm ledge on that wall
 ENC_PLATE_W = 8.2              # depth of the plate the encoder screws to (inside the hub)
@@ -368,7 +368,29 @@ shroud = sh.clean()
 
 # ============================================================== diffuser (white)
 
+# Snap fit: three flexible tabs hang from the diffuser's hidden inner edge (under the knob) and
+# click into undercut pockets in the black centre column. A 0.4 mm ring can't snap into a solid
+# rim (it can't shrink across), so the flexing is done by the tabs: 0.8 mm thick, 6 mm long,
+# bending 0.3 mm (about 1 % strain, fine for PLA or PETG). The flat latch holds it down onto the
+# column and the ledge; a lead-in chamfer on each hook makes it a push-to-click fit.
+SNAP_ANGLES = (30, 150, 270)
+SNAP_TAB_SPAN = 24.0            # degrees (about 4 mm wide)
+SNAP_TAB = [(9.3, DIFF_T - 0.01), (10.1, DIFF_T - 0.01), (10.1, 5.9), (10.5, 5.9), (10.5, 6.3), (10.1, 6.9), (9.3, 6.9)]
+SNAP_POCKET = [(8.75, DIFF_T - 0.2), (10.3, DIFF_T - 0.2), (10.3, 5.8), (10.65, 5.8), (10.65, 7.2), (8.75, 7.2)]
+SNAP_POCKET_SPAN = SNAP_TAB_SPAN + 3.6   # 0.3 mm each side
+
+
+def revolved(profile, span, at):
+    """An (r, w) profile swept `span` degrees round the knob axis, centred on angle `at`."""
+    s = (cq.Workplane("XY", origin=(0, 0, RING_V)).polyline([(RING_U + rr, ww) for rr, ww in profile]).close()
+         .revolve(span, (RING_U, 0, 0), (RING_U, 1, 0)).val())
+    return s.rotate(V(RING_U, 0, RING_V), V(RING_U, 1, RING_V), at - span / 2)
+
+
+shroud = shroud.cut(union(*[revolved(SNAP_POCKET, SNAP_POCKET_SPAN, a) for a in SNAP_ANGLES])).clean()
 diffuser = ring_w(RING_U, RING_V, DIFF_R_IN, DIFF_R_OUT, 0, DIFF_T)
+diffuser = diffuser.fuse(union(*[revolved(SNAP_TAB, SNAP_TAB_SPAN, a) for a in SNAP_ANGLES])).clean()
+diffuser = diffuser.Solids()[0] if len(diffuser.Solids()) == 1 else diffuser
 
 # ============================================================== bought parts
 

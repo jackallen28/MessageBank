@@ -93,6 +93,10 @@ fits = [
     ("diffuser in the black bezel (outer)", FIT_SLIDE, 0.25, 0.5),
     ("diffuser rests on the channel wall's ledge", DIFF_R_OUT - CHAN_R, 0.7, 9),
     ("diffuser rests on the centre column", HUB_R - DIFF_R_IN, 0.7, 9),
+    ("snap tab hook: interference as drawn (the tab bends this far)", 10.5 - 10.3, 0.15, 0.35),
+    ("snap tab: room to bend inward in its pocket", 9.3 - 8.75, 0.4, 2),
+    ("snap tab: side clearance in its pocket", math.radians((SNAP_POCKET_SPAN - SNAP_TAB_SPAN) / 2) * 9.3, 0.25, 0.6),
+    ("snap hook in its undercut (radial / vertical play)", min(10.65 - 10.5, 5.9 - 5.8), 0.1, 0.3),
     ("shroud in the deck opening", FIT_SLIDE, 0.25, 0.5),
     ("screen carrier in its rails (sides, behind, top stop)", FIT_RAIL, 0.3, 0.5),
     ("LED ring (37 mm) inside the channel (outer)", CHAN_R - RING_OD / 2, 0.3, 3),
@@ -116,6 +120,8 @@ fits = [
 ]
 for label, gap, lo, hi in fits:
     say(lo <= gap <= hi, f"{label}: {gap:.2f} mm")
+strain = 100 * 1.5 * 0.8 * 0.3 / (5.9 - DIFF_T) ** 2   # cantilever: 1.5 t d / L^2
+say(strain <= 1.5, f"diffuser snap tabs bend at {strain:.1f} % strain (PLA/PETG are fine below 1.5 %)")
 say((WALL - 1.0) >= 1.4, f"screen screw-head pockets leave {WALL - 1.0:.1f} mm of face wall")
 say(CAR_W0 - pcb_w1 - 3.6 >= 0.5, f"screen carrier: {CAR_W0 - pcb_w1 - 3.6:.1f} mm clear of the board's tallest part (3.6 mm)")
 recess = (WALL - USB_POCKET_D) + 0.3
@@ -133,6 +139,8 @@ for label, t, lo in [
     ("shroud channel floor / flange", PLATE_T, 1.6),
     ("encoder plate under the tab groove", PLATE_T - 1.0, 0.8),
     ("diffuser (two 0.2 mm layers)", DIFF_T, 0.4),
+    ("centre column between a snap pocket and the channel", HUB_R - 10.65, 0.4),
+    ("centre column between a snap pocket and the nut pocket", 8.75 - NUT_POCKET_R, 0.8),
 ]:
     say(t >= lo - 1e-6, f"{label}: {t:.1f} mm (min {lo})")
 
