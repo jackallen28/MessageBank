@@ -1,2 +1,4 @@
 577f798fc1e5caf642853b3a07bc51336422e4564be5bed76002d9dfff861f21  MessageBox-main-v10-OTA.bin
 d607af1317b9c3c7d366b50f4025ac5d0ba73b391fde6bf322c24c635a0671e4  MessageBox-main-v10-USB-installer.bin
+201228e2471c0c416b5e4f1dff4b1ee2cee5b732fedfe6aabb9f21c370215a39  MessageBox-main-v11-OTA.bin
+2e12293e68d7a3014e10df726bbc1db83643a94baecb0033f8c04f4c2028410f  MessageBox-main-v11-USB-installer.bin

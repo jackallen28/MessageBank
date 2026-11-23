@@ -11,12 +11,9 @@
 //
 // Library: https://github.com/ZinggJM/GxEPD2
 //
-// MessageBox copy of GxEPD2 1.6.9's GxEPD2_370_GDEY037T03 (GPL-3.0, Jean-Marc Zingg). The only
-// change is the fixed waits below. GxEPD2 uses them only when BUSY isn't wired: then it can't
-// tell when the panel has finished, so it waits this long. The library's own values (50, 50,
-// 1500, 350 ms) leave almost no margin over the panel's real times (46, 40, 1005, 343 ms), and
-// a command sent while the panel is still busy garbles the picture. With BUSY wired, these
-// values are not used at all.
+// MessageBox copy of GxEPD2 1.6.9's GxEPD2_370_GDEY037T03 (GPL-3.0, Jean-Marc Zingg).
+// Use the fixed waits below if BUSY is unwired or fails to assert. A command sent while
+// the panel is still busy can garble the picture.
 
 #ifndef _MB_EPD370_H_
 #define _MB_EPD370_H_
@@ -42,6 +39,10 @@ class MB_EPD370 : public GxEPD2_EPD
     static const uint16_t partial_refresh_time = 600; // ms, e.g. 343000us (library: 350)
     // constructor
     MB_EPD370(int16_t cs, int16_t dc, int16_t rst, int16_t busy);
+    using GxEPD2_EPD::init;
+    void init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration = 10, bool pulldown_rst_mode = false) override;
+    bool isBusy() const { return _busy >= 0 && digitalRead(_busy) == _busy_level; }
+    bool busyTimedOut() const { return _busy_timed_out; }
     // methods (virtual)
     //  Support for Bitmaps (Sprites) to Controller Buffer and to Screen
     void clearScreen(uint8_t value = 0xFF); // init controller memory and screen (default white)
@@ -83,11 +84,14 @@ class MB_EPD370 : public GxEPD2_EPD
     void _writeImagePart(uint8_t command, const uint8_t bitmap[], int16_t x_part, int16_t y_part, int16_t w_bitmap, int16_t h_bitmap,
                          int16_t x, int16_t y, int16_t w, int16_t h, bool invert = false, bool mirror_y = false, bool pgm = false);
     void _setPartialRamArea(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
-    void _PowerOn();
+    bool _waitForPanel(uint16_t fallback_ms);
+    void _restoreAutomaticTemperature();
+    bool _PowerOn();
     void _PowerOff();
     void _InitDisplay();
     void _Update_Full();
     void _Update_Part();
+    bool _busy_timed_out = false;
 };
 
 #endif

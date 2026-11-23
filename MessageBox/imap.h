@@ -1,9 +1,13 @@
 // Minimal IMAP client for Gmail (imap.gmail.com:993, TLS), plus the text decoding a mail needs:
 // RFC 2047 headers (=?UTF-8?B?...?=), quoted-printable and base64 bodies, HTML stripping, and
-// folding UTF-8 down to the ASCII the e-paper fonts can draw.
+// folding UTF-8 down to the ASCII the e-paper fonts can draw, and image attachments.
 #pragma once
 #include <WiFiClientSecure.h>
+#include <memory>
+#include <new>
 #include "certs.h"
+#include "MailImage.h"
+#include "MailStructure.h"
 
 // ---------------------------------------------------------------- text helpers
 
@@ -14,19 +18,22 @@ static int hexVal(char c) {
   return -1;
 }
 
+static int base64Value(char c) {
+  if (c >= 'A' && c <= 'Z') return c - 'A';
+  if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+  if (c >= '0' && c <= '9') return c - '0' + 52;
+  if (c == '+') return 62;
+  if (c == '/') return 63;
+  return -1;
+}
+
 static String decodeBase64(const String &in) {
   String out;
   uint32_t acc = 0;
   int bits = 0;
   for (size_t i = 0; i < in.length(); i++) {
-    char c = in[i];
-    int v;
-    if (c >= 'A' && c <= 'Z') v = c - 'A';
-    else if (c >= 'a' && c <= 'z') v = c - 'a' + 26;
-    else if (c >= '0' && c <= '9') v = c - '0' + 52;
-    else if (c == '+') v = 62;
-    else if (c == '/') v = 63;
-    else continue;  // '=', CR, LF and anything else
+    const int v = base64Value(in[i]);
+    if (v < 0) continue;  // '=', CR, LF and anything else
     acc = (acc << 6) | v;
     bits += 6;
     if (bits >= 8) {
@@ -267,102 +274,66 @@ static String headerValue(const String &hdr, const char *name) {
   return v;
 }
 
-// ---------------------------------------------------------------- BODYSTRUCTURE
+// Accumulates decoded image bytes only. The encoded literal is read in small network chunks.
+class MailImageLiteral {
+ public:
+  explicit MailImageLiteral(const MailPart &part)
+      : base64_(part.encoding == "BASE64"), expected_(part.size),
+        capacity_(base64_ ? min(part.size / 4 * 3 + 3, MAIL_IMAGE_MAX_BYTES) : part.size),
+        data_(new (std::nothrow) uint8_t[capacity_]) {}
 
-// Finds the part to show: the first text/plain, else the first text/html.
-struct BodyPick {
-  String part;      // "TEXT" for a single-part mail, else "1", "1.1", ...
-  String encoding;  // 7BIT, 8BIT, QUOTED-PRINTABLE, BASE64
-  String charset;
-  bool html = false;
-  bool found = false;
-  bool plain = false;
+  bool allocated() const { return bool(data_); }
+  uint32_t expected() const { return expected_; }
+
+  void append(const uint8_t *bytes, size_t length) {
+    received_ += length;
+    for (size_t i = 0; i < length && !invalid_; i++) {
+      if (!base64_) { emit(bytes[i]); continue; }
+      const char c = bytes[i];
+      if (c == '\r' || c == '\n' || c == ' ' || c == '\t') continue;
+      if (c == '=') {
+        if (bits_ == 0 || bits_ == 6 || ++padding_ > 2) invalid_ = true;
+        continue;
+      }
+      const int v = base64Value(c);
+      if (v < 0 || padding_) { invalid_ = true; continue; }
+      accumulator_ = (accumulator_ << 6) | v;
+      bits_ += 6;
+      if (bits_ >= 8) {
+        bits_ -= 8;
+        emit((accumulator_ >> bits_) & 0xff);
+      }
+    }
+  }
+
+  bool decode(MailImage &picture) const {
+    if (received_ != expected_ || invalid_ || !length_) return false;
+    if (base64_ && (bits_ == 6 || (padding_ && padding_ != bits_ / 2) ||
+                   (accumulator_ & ((1U << bits_) - 1)))) return false;
+    return decodeMailImage(data_.get(), length_, picture);
+  }
+
+ private:
+  void emit(uint8_t byte) {
+    if (length_ >= capacity_) invalid_ = true;
+    else data_[length_++] = byte;
+  }
+
+  const bool base64_;
+  const uint32_t expected_, capacity_;
+  std::unique_ptr<uint8_t[]> data_;
+  size_t length_ = 0, received_ = 0;
+  uint32_t accumulator_ = 0;
+  uint8_t bits_ = 0, padding_ = 0;
+  bool invalid_ = false;
 };
-
-static void bsSkipSpace(const String &s, int &i) {
-  while (i < (int)s.length() && s[i] == ' ') i++;
-}
-
-// Reads one token: a quoted string, an atom/NIL/number, or a whole (...) list as raw text.
-static String bsToken(const String &s, int &i) {
-  bsSkipSpace(s, i);
-  if (i >= (int)s.length()) return "";
-  if (s[i] == '"') {
-    String out;
-    i++;
-    while (i < (int)s.length() && s[i] != '"') {
-      if (s[i] == '\\' && i + 1 < (int)s.length()) i++;
-      out += s[i++];
-    }
-    i++;
-    return out;
-  }
-  if (s[i] == '(') {
-    int depth = 0, start = i;
-    bool q = false;
-    for (; i < (int)s.length(); i++) {
-      char c = s[i];
-      if (q) { if (c == '\\') i++; else if (c == '"') q = false; continue; }
-      if (c == '"') q = true;
-      else if (c == '(') depth++;
-      else if (c == ')' && --depth == 0) { i++; break; }
-    }
-    return s.substring(start, i);
-  }
-  int start = i;
-  while (i < (int)s.length() && s[i] != ' ' && s[i] != ')' && s[i] != '(') i++;
-  return s.substring(start, i);
-}
-
-static void bsParse(const String &s, int &i, const String &path, BodyPick &pick) {
-  bsSkipSpace(s, i);
-  if (i >= (int)s.length() || s[i] != '(') return;
-  i++;
-  bsSkipSpace(s, i);
-  if (i < (int)s.length() && s[i] == '(') {  // multipart: children first, then the subtype etc.
-    int n = 1;
-    while (i < (int)s.length() && s[i] == '(') {
-      bsParse(s, i, path.length() ? path + "." + String(n) : String(n), pick);
-      n++;
-      bsSkipSpace(s, i);
-    }
-  } else {  // a leaf: type subtype (params) id description encoding size ...
-    String f[6];
-    for (int k = 0; k < 6; k++) f[k] = bsToken(s, i);
-    f[0].toUpperCase();
-    f[1].toUpperCase();
-    f[5].toUpperCase();
-    bool isPlain = f[0] == "TEXT" && f[1] == "PLAIN";
-    bool isHtml = f[0] == "TEXT" && f[1] == "HTML";
-    if ((isPlain && !pick.plain) || (isHtml && !pick.found)) {
-      pick.found = true;
-      pick.plain = isPlain;
-      pick.html = isHtml;
-      pick.part = path.length() ? path : "TEXT";
-      pick.encoding = f[5];
-      String p = f[2];
-      p.toUpperCase();
-      int cs = p.indexOf("\"CHARSET\" \"");
-      pick.charset = cs >= 0 ? p.substring(cs + 11, p.indexOf('"', cs + 11)) : "UTF-8";
-    }
-  }
-  // skip whatever is left of this list
-  int depth = 1;
-  bool q = false;
-  for (; i < (int)s.length(); i++) {
-    char c = s[i];
-    if (q) { if (c == '\\') i++; else if (c == '"') q = false; continue; }
-    if (c == '"') q = true;
-    else if (c == '(') depth++;
-    else if (c == ')' && --depth == 0) { i++; break; }
-  }
-}
 
 // ---------------------------------------------------------------- the IMAP session
 
 struct MailItem {
   uint32_t uid;
   String fromName, fromAddr, subject, body;
+  MailImage picture;
 };
 
 class GmailImap {
@@ -447,47 +418,53 @@ class GmailImap {
 
   bool fetch(uint32_t uid, MailItem &m) {
     m.uid = uid;
-    String u = String(uid);
-    // headers
-    if (!command("UID FETCH " + u + " (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")) {
-      error = "FETCH header failed: " + error;
-      return false;
-    }
-    String hdr = literal;
-    hdr.replace("\r\n ", " ");  // unfold long header lines
-    hdr.replace("\r\n\t", " ");
-    String from = headerValue(hdr, "from");
-    m.subject = foldToAscii(decodeHeaderWords(headerValue(hdr, "subject")));
-    m.subject.trim();
-    from = decodeHeaderWords(from);
-    splitFrom(from, m.fromName, m.fromAddr);
-    m.fromName = foldToAscii(m.fromName);
-    // which part holds the text
-    String untagged;
-    if (!command("UID FETCH " + u + " (BODYSTRUCTURE)", &untagged)) {
-      error = "FETCH structure failed: " + error;
-      return false;
-    }
-    BodyPick pick;
-    int b = untagged.indexOf("BODYSTRUCTURE ");
-    if (b >= 0) {
-      int i = b + 14;
-      bsParse(untagged, i, "", pick);
-    }
     m.body = "";
-    if (pick.found) {
-      if (!command("UID FETCH " + u + " (BODY.PEEK[" + pick.part + "]<0.6000>)")) {
-        error = "FETCH body failed: " + error;
+    m.picture = MailImage{};
+    const String request = "UID FETCH " + String(uid);
+    // headers
+    {
+      String hdr;
+      if (!command(request + " (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])", nullptr, &hdr)) {
+        error = "FETCH header failed: " + error;
         return false;
       }
-      String raw = literal;
-      if (pick.encoding == "BASE64") raw = decodeBase64(raw);
-      else if (pick.encoding == "QUOTED-PRINTABLE") raw = decodeQP(raw, false);
-      if (pick.charset.startsWith("ISO-8859") || pick.charset.startsWith("WINDOWS-125")) raw = latin1ToUtf8(raw);
-      if (pick.html) raw = htmlToText(raw);
-      m.body = cleanBody(foldToAscii(raw));
-      if (m.body.length() > 900) m.body = m.body.substring(0, 900) + "...";
+      hdr.replace("\r\n ", " ");  // unfold long header lines
+      hdr.replace("\r\n\t", " ");
+      m.subject = foldToAscii(decodeHeaderWords(headerValue(hdr, "subject")));
+      m.subject.trim();
+      splitFrom(decodeHeaderWords(headerValue(hdr, "from")), m.fromName, m.fromAddr);
+      m.fromName = foldToAscii(m.fromName);
     }
+    MailStructure content;
+    {
+      String structure;
+      if (!command(request + " (BODYSTRUCTURE)", &structure)) {
+        error = "FETCH structure failed: " + error;
+        return false;
+      }
+      const int start = structure.indexOf("BODYSTRUCTURE ");
+      if (start >= 0) MailStructureParser(structure, start + 14).parse(content);
+    }
+    if (!fetchText(request, content.plain, false, m.body)) return false;
+    if (!m.body.length() && !fetchText(request, content.html, true, m.body)) return false;
+
+    // Prefer a real attachment to an inline image (often a signature logo).
+    for (bool attachment : {true, false}) {
+      for (uint8_t i = 0; i < content.imageCount; i++) {
+        const MailPart &part = content.images[i];
+        if (part.attachment != attachment) continue;
+        MailImageLiteral image(part);
+        if (!image.allocated()) continue;
+        if (!command(request + " (BODY.PEEK[" + part.section + "]<0." + String(part.size) + ">)",
+                     nullptr, nullptr, &image)) {
+          if (!client.connected()) { error = "FETCH image failed: " + error; return false; }
+          error = "";  // Gmail refused this part. Other parts can still be read.
+          continue;
+        }
+        if (image.decode(m.picture)) return true;
+      }
+    }
+    if (content.hadImage && !m.body.length()) m.body = "Image could not be displayed.";
     return true;
   }
 
@@ -505,7 +482,23 @@ class GmailImap {
  private:
   WiFiClientSecure client;
   int tag = 0;
-  String literal;  // contents of the last {n} literal in a response
+  static constexpr size_t RESPONSE_LIMIT = 8192;
+
+  bool fetchText(const String &request, const MailPart &part, bool html, String &body) {
+    if (!part.section.length()) return true;
+    String raw;
+    if (!command(request + " (BODY.PEEK[" + part.section + "]<0.6000>)", nullptr, &raw)) {
+      error = "FETCH body failed: " + error;
+      return false;
+    }
+    if (part.encoding == "BASE64") raw = decodeBase64(raw);
+    else if (part.encoding == "QUOTED-PRINTABLE") raw = decodeQP(raw, false);
+    if (part.charset.startsWith("ISO-8859") || part.charset.startsWith("WINDOWS-125")) raw = latin1ToUtf8(raw);
+    if (html) raw = htmlToText(raw);
+    body = cleanBody(foldToAscii(raw));
+    if (body.length() > 900) body = body.substring(0, 900) + "...";
+    return true;
+  }
 
   static String quote(const String &s) {
     String o = "\"";
@@ -530,20 +523,49 @@ class GmailImap {
         if (line.endsWith("\r")) line.remove(line.length() - 1);
         return true;
       }
-      if (line.length() < 4096) line += (char)c;
+      if (line.length() < RESPONSE_LIMIT) line += (char)c;
     }
     return false;
   }
 
-  // Sends one tagged command, collects untagged lines (if wanted) and the last literal.
-  bool command(const String &cmd, String *untagged = nullptr) {
+  static void appendResponse(String *response, const char *bytes, size_t count) {
+    if (response && response->length() < RESPONSE_LIMIT) {
+      response->concat(bytes, min(count, RESPONSE_LIMIT - response->length()));
+    }
+  }
+
+  bool readLiteral(uint32_t remaining, String *untagged, String *literal, MailImageLiteral *image) {
+    uint8_t buf[256];
+    const uint32_t start = millis();
+    while (remaining && millis() - start < 20000) {
+      const int count = client.read(buf, remaining < sizeof(buf) ? remaining : sizeof(buf));
+      if (count <= 0) {
+        if (!client.connected() && !client.available()) break;
+        delay(1);
+        continue;
+      }
+      const char *text = reinterpret_cast<const char *>(buf);
+      appendResponse(untagged, text, count);
+      appendResponse(literal, text, count);
+      if (image) image->append(buf, count);
+      remaining -= count;
+    }
+    if (!remaining) return true;
+    error = "incomplete IMAP literal";
+    stop();
+    return false;
+  }
+
+  // Sends one tagged command, optionally collecting untagged data or streaming a literal.
+  bool command(const String &cmd, String *untagged = nullptr, String *literal = nullptr,
+               MailImageLiteral *image = nullptr) {
     String t = "A" + String(++tag);
-    literal = "";
     client.print(t + " " + cmd + "\r\n");
     while (true) {
       String line;
       if (!readLine(line, 20000)) {
         error = "no answer (timeout)";
+        stop();
         return false;
       }
       if (line.startsWith(t + " ")) {
@@ -552,23 +574,18 @@ class GmailImap {
         error = st;
         return false;
       }
-      if (untagged && untagged->length() < 4096) {
-        *untagged += line;
-        *untagged += '\n';
-      }
+      appendResponse(untagged, line.c_str(), line.length());
+      appendResponse(untagged, "\n", 1);
       if (line.endsWith("}")) {  // a literal of n bytes follows
-        int open = line.lastIndexOf('{');
-        if (open >= 0) {
-          long n = line.substring(open + 1, line.length() - 1).toInt();
-          literal = "";
-          uint8_t buf[256];
-          uint32_t t0 = millis();
-          while (n > 0 && millis() - t0 < 20000) {
-            int got = client.read(buf, n > (long)sizeof(buf) ? sizeof(buf) : n);
-            if (got <= 0) { delay(1); continue; }
-            if (literal.length() < 8000) literal.concat((const char *)buf, got);
-            n -= got;
+        const int open = line.lastIndexOf('{');
+        uint32_t length;
+        if (open >= 0 && mailNumber(line, open + 1, line.length() - 1, length)) {
+          if (image && length > image->expected()) {
+            error = "IMAP image exceeded its requested size";
+            stop();
+            return false;
           }
+          if (!readLiteral(length, untagged, literal, image)) return false;
         }
       }
     }

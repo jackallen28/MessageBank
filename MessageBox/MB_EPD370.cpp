@@ -19,13 +19,21 @@ MB_EPD370::MB_EPD370(int16_t cs, int16_t dc, int16_t rst, int16_t busy) :
 {
 }
 
+void MB_EPD370::init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration, bool pulldown_rst_mode)
+{
+  GxEPD2_EPD::init(serial_diag_bitrate, initial, reset_duration, pulldown_rst_mode);
+  // The base init sets plain INPUT. An open BUSY line should read high reliably.
+  if (_busy >= 0) pinMode(_busy, INPUT_PULLUP);
+  _busy_timed_out = false;
+}
+
 void MB_EPD370::clearScreen(uint8_t value)
 {
   // full refresh needed for all cases (previous != screen)
   _writeScreenBuffer(0x10, value); // set previous
   _writeScreenBuffer(0x13, value); // set current
   refresh(false); // full refresh
-  _initial_write = false;
+  if (!_busy_timed_out) _initial_write = false;
 }
 
 void MB_EPD370::writeScreenBuffer(uint8_t value)
@@ -42,6 +50,7 @@ void MB_EPD370::writeScreenBufferAgain(uint8_t value)
 
 void MB_EPD370::_writeScreenBuffer(uint8_t command, uint8_t value)
 {
+  if (_busy_timed_out) return;
   if (!_init_display_done) _InitDisplay();
   _writeCommand(command);
   _startTransfer();
@@ -76,6 +85,7 @@ void MB_EPD370::writeImageToPrevious(const uint8_t bitmap[], int16_t x, int16_t 
 
 void MB_EPD370::_writeImage(uint8_t command, const uint8_t bitmap[], int16_t x, int16_t y, int16_t w, int16_t h, bool invert, bool mirror_y, bool pgm)
 {
+  if (_busy_timed_out) return;
   delay(1); // yield() to avoid WDT on ESP8266 and ESP32
   uint16_t wb = (w + 7) / 8; // width bytes, bitmaps are padded
   x -= x % 8; // byte boundary
@@ -91,6 +101,7 @@ void MB_EPD370::_writeImage(uint8_t command, const uint8_t bitmap[], int16_t x, 
   if ((w1 <= 0) || (h1 <= 0)) return;
   if (!_init_display_done) _InitDisplay();
   if (_initial_write) writeScreenBuffer(); // initial full screen buffer clean
+  if (_busy_timed_out) return;
   _writeCommand(0x91); // partial in
   _setPartialRamArea(x1, y1, w1, h1);
   _writeCommand(command);
@@ -145,6 +156,7 @@ void MB_EPD370::writeImagePartToPrevious(const uint8_t bitmap[], int16_t x_part,
 void MB_EPD370::_writeImagePart(uint8_t command, const uint8_t bitmap[], int16_t x_part, int16_t y_part, int16_t w_bitmap, int16_t h_bitmap,
     int16_t x, int16_t y, int16_t w, int16_t h, bool invert, bool mirror_y, bool pgm)
 {
+  if (_busy_timed_out) return;
   delay(1); // yield() to avoid WDT on ESP8266 and ESP32
   if ((w_bitmap < 0) || (h_bitmap < 0) || (w < 0) || (h < 0)) return;
   if ((x_part < 0) || (x_part >= w_bitmap)) return;
@@ -166,6 +178,7 @@ void MB_EPD370::_writeImagePart(uint8_t command, const uint8_t bitmap[], int16_t
   if ((w1 <= 0) || (h1 <= 0)) return;
   if (!_init_display_done) _InitDisplay();
   if (_initial_write) writeScreenBuffer(); // initial full screen buffer clean
+  if (_busy_timed_out) return;
   _writeCommand(0x91); // partial in
   _setPartialRamArea(x1, y1, w1, h1);
   _writeCommand(command);
@@ -265,16 +278,18 @@ void MB_EPD370::drawNative(const uint8_t* data1, const uint8_t* data2, int16_t x
 
 void MB_EPD370::refresh(bool partial_update_mode)
 {
+  if (_busy_timed_out) return;
   if (partial_update_mode) refresh(0, 0, WIDTH, HEIGHT);
   else
   {
     _Update_Full();
-    _initial_refresh = false; // initial full update done
+    if (!_busy_timed_out) _initial_refresh = false; // initial full update done
   }
 }
 
 void MB_EPD370::refresh(int16_t x, int16_t y, int16_t w, int16_t h)
 {
+  if (_busy_timed_out) return;
   if (_initial_refresh) return refresh(false); // initial update needs be full update
   // intersection with screen
   int16_t w1 = x < 0 ? w + x : w; // reduce
@@ -291,7 +306,7 @@ void MB_EPD370::refresh(int16_t x, int16_t y, int16_t w, int16_t h)
   if (usePartialUpdateWindow) _writeCommand(0x91); // partial in
   _setPartialRamArea(x1, y1, w1, h1);
   _Update_Part();
-  if (usePartialUpdateWindow) _writeCommand(0x92); // partial out
+  if (usePartialUpdateWindow && !_busy_timed_out) _writeCommand(0x92); // partial out
 }
 
 void MB_EPD370::powerOff(void)
@@ -302,7 +317,7 @@ void MB_EPD370::powerOff(void)
 void MB_EPD370::hibernate()
 {
   _PowerOff();
-  if (_rst >= 0)
+  if (_rst >= 0 && !_busy_timed_out)
   {
     _writeCommand(0x07); // deep sleep
     _writeData(0xA5);    // check code
@@ -326,22 +341,59 @@ void MB_EPD370::_setPartialRamArea(uint16_t x, uint16_t y, uint16_t w, uint16_t 
   _writeData(0x01);
 }
 
-void MB_EPD370::_PowerOn()
+bool MB_EPD370::_waitForPanel(uint16_t fallback_ms)
+{
+  if (_busy < 0)
+  {
+    delay(fallback_ms);
+    return true;
+  }
+
+  const uint32_t started = micros();
+  // A high BUSY pin immediately after a command may mean BUSY has yet to assert.
+  while (!isBusy() && micros() - started < 10000) delay(1);
+  if (!isBusy())
+  {
+    const uint32_t fallback_us = uint32_t(fallback_ms) * 1000;
+    while (micros() - started < fallback_us) delay(1);
+  }
+  while (isBusy())
+  {
+    if (micros() - started >= _busy_timeout)
+    {
+      _busy_timed_out = true;
+      return false;
+    }
+    delay(1);
+  }
+  return true;
+}
+
+void MB_EPD370::_restoreAutomaticTemperature()
+{
+  if (_busy_timed_out) return;
+  // Clear TSFIX in CCSET without resetting the panel settings between differential updates.
+  _writeCommand(0xE0);
+  _writeData(0x00);
+}
+
+bool MB_EPD370::_PowerOn()
 {
   if (!_power_is_on)
   {
     _writeCommand(0x04);
-    _waitWhileBusy("_PowerOn", power_on_time);
+    _power_is_on = _waitForPanel(power_on_time);
   }
-  _power_is_on = true;
+  return _power_is_on;
 }
 
 void MB_EPD370::_PowerOff()
 {
+  if (_busy_timed_out) return;
   if (_power_is_on)
   {
     _writeCommand(0x02); // power off
-    _waitWhileBusy("_PowerOff", power_off_time);
+    if (!_waitForPanel(power_off_time)) return;
   }
   _power_is_on = false;
 }
@@ -354,7 +406,7 @@ void MB_EPD370::_InitDisplay()
     _writeCommand(0x00); // PANEL SETTING
     _writeData(0x1e);    // soft reset
     _writeData(0x0d);
-    delay(1);
+    delayMicroseconds(1000);
   }
   _power_is_on = false;
   _writeCommand(0x00); // PANEL SETTING
@@ -375,11 +427,11 @@ void MB_EPD370::_Update_Full()
   }
   _writeCommand(0x50);
   _writeData(0x97);
-  _PowerOn();
+  if (!_PowerOn()) return;
   _writeCommand(0x12); //display refresh
-  _waitWhileBusy("_Update_Full", full_refresh_time);
+  if (!_waitForPanel(full_refresh_time)) return;
   _PowerOff();
-  if (useFastFullUpdate) _InitDisplay(); // undo TSFIX
+  if (useFastFullUpdate) _restoreAutomaticTemperature();
 }
 
 void MB_EPD370::_Update_Part()
@@ -393,9 +445,9 @@ void MB_EPD370::_Update_Part()
   }
   _writeCommand(0x50);
   _writeData(0xD7);
-  _PowerOn();
+  if (!_PowerOn()) return;
   _writeCommand(0x12); //display refresh
-  _waitWhileBusy("_Update_Part", partial_refresh_time);
+  if (!_waitForPanel(partial_refresh_time)) return;
   _PowerOff();
-  if (hasFastPartialUpdate) _InitDisplay(); // undo TSFIX
+  if (hasFastPartialUpdate) _restoreAutomaticTemperature();
 }

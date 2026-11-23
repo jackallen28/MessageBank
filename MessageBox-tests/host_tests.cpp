@@ -45,6 +45,8 @@ int main() {
     CHECK(p.plan(DisplayPage::Setup, false, 1) == RefreshMode::Full); p.commit(DisplayPage::Setup, 1);
     CHECK(p.plan(DisplayPage::Content, false, 3) == RefreshMode::Full);       // rotation changed
     CHECK(p.plan(DisplayPage::Pattern, false, 1) == RefreshMode::Full);
+    p.commit(DisplayPage::Pattern, 1);
+    CHECK(p.plan(DisplayPage::Content, false, 1) == RefreshMode::Full);     // clear the test pattern
   }
   // ---- knob: a full quadrature cycle is one click; bounce doesn't count; reverse works
   {

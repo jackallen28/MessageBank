@@ -35,20 +35,13 @@ The firmware is built around that:
   knob stay smooth while the panel updates.
 - **Skipping frames:** if you turn the knob faster than the panel can keep up, the box skips
   straight to where you stopped instead of drawing every step.
-- **Sending the picture:** the whole picture is kept in RAM and sent at 10 MHz SPI (about
-  10 ms).
-- **Fast refresh for every change:** scrolling, choosing keep or delete, and badge updates all
-  use the fast refresh.
-- **Full refreshes only at clean moments:** they clear the faint "ghosting" a partial refresh
-  leaves. They happen when waking from blank, when going blank, and after *Clean refresh after
-  this many fast ones* (default 10). Even then, they only happen when a new message opens,
-  never in the middle of scrolling.
+- **Sending the picture:** the frame is kept in RAM and sent over SPI at the configured speed
+  (1 MHz by default, with 4 and 10 MHz options).
+- **Fast refresh for routine changes:** scrolling, changing pages, choosing keep or delete,
+  and badge updates use the fast refresh.
+- **Full refreshes:** initialization, clearing to blank, entering setup, testing the panel,
+  changing rotation, and recovering from a BUSY timeout use a full refresh.
 - **Saving power:** the driver switches the panel's high voltage off after every update.
-
-Firmware v10 refresh policy (from v9): everything routine is a fast refresh. A full refresh
-happens only when the screen clears to blank, for setup, on rotation changes and for the test
-pattern. The screen SPI speed is a setting (1 MHz tested, 4 or 10 MHz faster). See
-[`firmware/README.md`](firmware/README.md).
 
 ## Parts
 
@@ -111,10 +104,10 @@ Things to know:
 
 **Ready-made images** are in [`firmware/`](firmware/):
 
-- **Over USB at 0x0:** flash `MessageBox-main-v10-USB-installer.bin` with Espressif's browser
+- **Over USB at 0x0:** flash `MessageBox-main-v11-USB-installer.bin` with Espressif's browser
   flasher (DIO, 40 MHz, 4 MB). This erases settings and messages.
-- **From the device page's Firmware update:** use `MessageBox-main-v10-OTA.bin` from a GitHub
-  release. This keeps settings and messages.
+- **From the device page's Firmware update:** paste the raw GitHub link to
+  `MessageBox-main-v11-OTA.bin`. This keeps settings and messages.
 
 [`firmware/README.md`](firmware/README.md) has the steps, a test checklist and the review of v9.
 
@@ -180,11 +173,19 @@ the box shows.
    boxes show what happened, for example `Login refused` if the app password is wrong.
 
 If the home Wi-Fi can't be joined within 20 s, or drops for 30 s, the setup Wi-Fi opens again
-on its own. While nobody is connected to it, the box keeps retrying the home Wi-Fi every minute.
+on its own. The box keeps retrying the home Wi-Fi about every minute while the setup access
+point has no clients and no scan is running.
 **Hold the knob for 5 seconds**, until the ring fills up, to open the setup Wi-Fi by hand, for
 example to change networks.
 
 ## Sending messages
+
+Attach a JPEG or PNG to an email to show a picture on the box. The box converts the first
+supported image to black and white and keeps it with the message. Turn the knob clockwise past
+the last line of text to see it, and anticlockwise to return to the text. An email with only a
+picture opens directly on it. Press the knob for the usual keep-or-delete choice.
+
+See the [image format and size limits](firmware/README.md#emailed-pictures).
 
 - **The subject** is the title and **the text** is the message. Short notes get a big font,
   and long ones scroll.

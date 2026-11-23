@@ -3,13 +3,14 @@
 // calls screenShow(); the task draws the newest View it has, skipping any it couldn't get to.
 //
 // The display uses SPI (1 MHz by default, a setting), and RESET on GPIO8 and BUSY on GPIO4 when
-// "Screen wiring" is set to wired (the default, tested). Set to "not wired", the driver waits
-// fixed, generous times instead of reading BUSY, and RES must be tied to 3V3. Routine
+// "Screen wiring" is set to wired (the default, tested). The driver uses fixed waits if BUSY
+// is unwired or never asserts. With RESET unwired, RES must be tied to 3V3. Routine
 // reading and control changes use fast partial updates. Full refreshes happen
 // on initialization, clearing to blank, entering setup, rotation changes, or
-// an explicit full redraw/test pattern. No refresh-count cleanup is scheduled.
+// an explicit full redraw/test pattern. Recovery also uses a full refresh.
 // Keep controller RAM available while blank; do not hibernate between sessions.
 #pragma once
+#include <memory>
 #include <vector>
 #ifndef HOST_PREVIEW  // (HOST_PREVIEW: tools/preview_screens.cpp draws these screens on a PC)
 #include <SPI.h>
@@ -21,6 +22,7 @@
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansBold18pt7b.h>
 #include "config.h"
+#include "MailImage.h"
 #include "RefreshPolicy.h"
 
 #ifndef HOST_PREVIEW
@@ -34,7 +36,7 @@ EpdDisplay *epdDisplay = nullptr;
 enum FontId : uint8_t { F_REG9, F_BOLD9, F_REG12, F_BOLD12, F_BOLD18 };
 const GFXfont *const FONTS[] = { &FreeSans9pt7b, &FreeSansBold9pt7b, &FreeSans12pt7b, &FreeSansBold12pt7b, &FreeSansBold18pt7b };
 
-enum Screen : uint8_t { SCR_BLANK, SCR_ENVELOPE, SCR_READ, SCR_DECIDE, SCR_HAPPY, SCR_SETUP, SCR_TEXT, SCR_PATTERN };
+enum Screen : uint8_t { SCR_BLANK, SCR_ENVELOPE, SCR_READ, SCR_PICTURE, SCR_DECIDE, SCR_HAPPY, SCR_SETUP, SCR_TEXT, SCR_PATTERN };
 
 struct Line {
   String text;
@@ -47,6 +49,8 @@ struct View {
   String from, when, title; // read/decide header
   int pos = 0, total = 0;   // "2/5"
   std::vector<Line> lines;  // read: the laid-out message
+  std::shared_ptr<const MailImage> picture;
+  bool pictureOnly = false;
   int scroll = 0;           // read: first line shown
   bool savedList = false;   // reading saved messages (not new ones)
   int8_t choice = 0;        // decide: -1 delete, +1 save, 0 not chosen yet
@@ -59,7 +63,7 @@ int scrW() { return (cfg.rotation & 1) ? 416 : 240; }
 int scrH() { return (cfg.rotation & 1) ? 240 : 416; }
 const int HEADER_H = 30, FOOTER_H = 26, MARGIN = 10, SCROLLBAR_W = 6;
 int contentTop() { return HEADER_H + 6; }
-int contentBottom() { return scrH() - FOOTER_H - 2; }
+int contentBottom(int height) { return height - FOOTER_H - 2; }
 int textWidthAvail() { return scrW() - 2 * MARGIN - SCROLLBAR_W; }
 int lineHeight(uint8_t f) { return FONTS[f]->yAdvance; }
 
@@ -116,7 +120,7 @@ int linesHeight(const std::vector<Line> &v, int from, int to) {
 // The subject (bold) then the text. Short notes get the big font.
 std::vector<Line> layoutMessage(const String &subject, const String &body) {
   std::vector<Line> out;
-  int w = textWidthAvail(), room = contentBottom() - contentTop();
+  int w = textWidthAvail(), room = contentBottom(scrH()) - contentTop();
   bool hasSubject = subject.length() && subject != "(no subject)";
   String text = body.length() ? body : (hasSubject ? "" : "(empty message)");
   if (text.length() <= 80) {
@@ -135,7 +139,7 @@ std::vector<Line> layoutMessage(const String &subject, const String &body) {
 
 // The largest first line that still lets the screen be full.
 int maxScroll(const std::vector<Line> &v) {
-  int room = contentBottom() - contentTop(), h = 0;
+  int room = contentBottom(scrH()) - contentTop(), h = 0;
   for (int i = (int)v.size() - 1; i >= 0; i--) {
     h += lineHeight(v[i].font);
     if (h > room) return i + 1;
@@ -144,8 +148,8 @@ int maxScroll(const std::vector<Line> &v) {
 }
 
 // How many lines fit from 'first'.
-int linesThatFit(const std::vector<Line> &v, int first) {
-  int room = contentBottom() - contentTop(), h = 0, n = 0;
+int linesThatFit(const std::vector<Line> &v, int first, int room) {
+  int h = 0, n = 0;
   for (int i = first; i < (int)v.size(); i++) {
     h += lineHeight(v[i].font);
     if (h > room) break;
@@ -207,7 +211,7 @@ void printAt(int x, int y, const String &s, uint8_t f, uint16_t c = GxEPD_BLACK)
 }
 
 void printCentered(int y, const String &s, uint8_t f, uint16_t c = GxEPD_BLACK, int cx = -1) {
-  if (cx < 0) cx = scrW() / 2;
+  if (cx < 0) cx = epd.width() / 2;
   printAt(cx - textWidth(s, f) / 2, y, s, f, c);
 }
 
@@ -220,7 +224,7 @@ String fit(const String &s, uint8_t f, int w) {
 }
 
 void drawHeader(const View &v) {
-  int W = scrW();
+  int W = epd.width();
   epd.fillRect(0, 0, W, HEADER_H, GxEPD_BLACK);
   String right = String(v.pos) + "/" + String(v.total);
   int rw = textWidth(right, F_BOLD9);
@@ -230,7 +234,7 @@ void drawHeader(const View &v) {
 }
 
 void drawFooter(const String &left, const String &right, bool arrowDown) {
-  int W = scrW(), H = scrH();
+  int W = epd.width(), H = epd.height();
   epd.drawFastHLine(MARGIN, H - FOOTER_H, W - 2 * MARGIN, GxEPD_BLACK);
   int rw = textWidth(right, F_BOLD9);
   int x = W - MARGIN - rw - (arrowDown ? 16 : 0);
@@ -242,8 +246,8 @@ void drawFooter(const String &left, const String &right, bool arrowDown) {
 // ---------------------------------------------------------------- the screens
 
 void drawEnvelopeScreen(const View &v, bool happy) {
-  int W = scrW(), H = scrH();
-  bool land = cfg.rotation & 1;
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
   int S = land ? 6 : 8;
   int ew = 26 * S, eh = 18 * S;
   int ox = (W - ew) / 2, oy = land ? 44 : 120;
@@ -265,12 +269,13 @@ void drawEnvelopeScreen(const View &v, bool happy) {
 }
 
 void drawReadScreen(const View &v) {
-  int W = scrW();
+  int W = epd.width();
   drawHeader(v);
   int y = contentTop();
-  int n = linesThatFit(v.lines, v.scroll);
-  int used = linesHeight(v.lines, v.scroll, v.scroll + n), room0 = contentBottom() - contentTop();
-  if (v.scroll == 0 && n == (int)v.lines.size() && used < room0 / 2) y += (room0 - used) / 3;  // a short note sits nearer the middle
+  int room = contentBottom(epd.height()) - contentTop();
+  int n = linesThatFit(v.lines, v.scroll, room);
+  int used = linesHeight(v.lines, v.scroll, v.scroll + n);
+  if (v.scroll == 0 && n == (int)v.lines.size() && used < room / 2) y += (room - used) / 3;  // a short note sits nearer the middle
   for (int i = v.scroll; i < v.scroll + n; i++) {
     const Line &l = v.lines[i];
     y += lineHeight(l.font);
@@ -278,17 +283,41 @@ void drawReadScreen(const View &v) {
   }
   // scroll bar
   int total = linesHeight(v.lines, 0, v.lines.size());
-  int room = contentBottom() - contentTop();
   bool more = v.scroll + n < (int)v.lines.size();
   if (total > room) {
     int top = contentTop(), h = room;
     int above = linesHeight(v.lines, 0, v.scroll);
     int barH = max(16, h * room / total);
-    int barY = top + (h - barH) * above / max(1, total - room);
+    int barY = top + (h - barH) * min(above, total - room) / (total - room);
     epd.drawRect(W - SCROLLBAR_W - 2, top, SCROLLBAR_W, h, GxEPD_BLACK);
     epd.fillRect(W - SCROLLBAR_W - 2, barY, SCROLLBAR_W, barH, GxEPD_BLACK);
   }
-  drawFooter(v.when, more ? "turn for more" : "press: next", more);
+  const bool hasPicture = v.picture && v.picture->valid();
+  const char *hint = "press: next";
+  if (more) hint = "turn for more";
+  else if (hasPicture) hint = "turn for picture";
+  drawFooter(v.when, hint, more || hasPicture);
+}
+
+void drawPictureScreen(const View &v) {
+  drawHeader(v);
+  const int bodyHeight = contentBottom(epd.height()) - contentTop();
+  if (v.picture && v.picture->valid() &&
+      v.picture->width <= epd.width() && v.picture->height <= bodyHeight) {
+    const MailImage &picture = *v.picture;
+    const int left = (epd.width() - picture.width) / 2;
+    const int top = contentTop() + (bodyHeight - picture.height) / 2;
+    const size_t stride = picture.stride();
+    for (int y = 0; y < picture.height; y++) {
+      const uint8_t *row = picture.pixels.data() + y * stride;
+      for (int x = 0; x < picture.width; x++) {
+        if (row[x / 8] & (0x80 >> (x % 8))) epd.drawPixel(left + x, top + y, GxEPD_BLACK);
+      }
+    }
+  } else {
+    printCentered(contentTop() + bodyHeight / 2, "Picture unavailable", F_BOLD12);
+  }
+  drawFooter(v.pictureOnly ? v.when : String("turn back for text"), "press: next", false);
 }
 
 void drawChoiceBox(int x, int y, int w, int h, bool selected, bool del, const String &label, const String &hint) {
@@ -314,21 +343,20 @@ void drawChoiceBox(int x, int y, int w, int h, bool selected, bool del, const St
 }
 
 void drawDecideScreen(const View &v) {
-  int W = scrW(), H = scrH();
-  bool land = cfg.rotation & 1;
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
   drawHeader(v);
   printCentered(contentTop() + (land ? 24 : 34), fit(v.title, F_BOLD12, W - 2 * MARGIN), F_BOLD12);
   printCentered(contentTop() + (land ? 46 : 62), "Keep this message?", F_REG12);
-  int top = contentTop() + (land ? 60 : 92), bh = min(land ? 130 : 230, contentBottom() - top - 10);
+  int top = contentTop() + (land ? 60 : 92), bh = min(land ? 130 : 230, contentBottom(H) - top - 10);
   int gap = 12, bw = (W - 2 * MARGIN - gap) / 2;
   drawChoiceBox(MARGIN, top, bw, bh, v.choice < 0, true, "DELETE", "<< turn left");
   drawChoiceBox(MARGIN + bw + gap, top, bw, bh, v.choice > 0, false, "SAVE", "turn right >>");
   drawFooter("", v.choice ? String("press to confirm") : String("turn to choose"), false);
-  (void)H;
 }
 
 void drawSetupScreen(const View &v) {
-  int W = scrW();
+  int W = epd.width();
   epd.fillRect(0, 0, W, 40, GxEPD_BLACK);
   printCentered(28, "MessageBox setup", F_BOLD12, GxEPD_WHITE);
   std::vector<Line> lines;
@@ -336,13 +364,13 @@ void drawSetupScreen(const View &v) {
   int y = 48;
   for (const Line &l : lines) {
     y += lineHeight(F_REG12);
-    if (y > scrH() - 4) break;
+    if (y > epd.height() - 4) break;
     printAt(MARGIN, y - 6, l.text, F_REG12);
   }
 }
 
 void drawPattern() {
-  int W = scrW(), H = scrH();
+  int W = epd.width(), H = epd.height();
   epd.drawRect(0, 0, W, H, GxEPD_BLACK);
   epd.drawRect(3, 3, W - 6, H - 6, GxEPD_BLACK);
   for (int i = 0; i < 8; i++) epd.fillRect(10 + i * ((W - 20) / 8), 10, (W - 20) / 16, 30, GxEPD_BLACK);
@@ -354,19 +382,20 @@ void drawPattern() {
 }
 
 // Draws a View into the picture in RAM (no refresh).
-void drawView(const View &v) {
-  epd.setRotation(cfg.rotation);
+void drawView(const View &v, uint8_t rotation = cfg.rotation) {
+  epd.setRotation(rotation);
   epd.fillScreen(GxEPD_WHITE);
   switch (v.scr) {
     case SCR_BLANK: break;
     case SCR_ENVELOPE: drawEnvelopeScreen(v, false); break;
     case SCR_HAPPY: drawEnvelopeScreen(v, true); break;
     case SCR_READ: drawReadScreen(v); break;
+    case SCR_PICTURE: drawPictureScreen(v); break;
     case SCR_DECIDE: drawDecideScreen(v); break;
     case SCR_SETUP: drawSetupScreen(v); break;
     case SCR_TEXT: {
       std::vector<Line> lines;
-      wrapInto(lines, v.text, F_BOLD12, scrW() - 2 * MARGIN);
+      wrapInto(lines, v.text, F_BOLD12, epd.width() - 2 * MARGIN);
       int y = 8;
       for (const Line &l : lines) { y += lineHeight(F_BOLD12); printAt(MARGIN, y - 6, l.text, F_BOLD12); }
       break;
@@ -381,6 +410,7 @@ void drawView(const View &v) {
 SemaphoreHandle_t viewLock;
 TaskHandle_t screenTask;
 View pending;
+uint8_t pendingRotation = 0;
 bool pendingDirty = false;
 bool pendingForceFull = false;
 volatile uint32_t lastRefreshMs = 0;
@@ -400,6 +430,7 @@ void screenShow(const View &v, bool forceFull = false) {
   if (!screenTask || !viewLock) return;
   xSemaphoreTake(viewLock, portMAX_DELAY);
   pending = v;
+  pendingRotation = cfg.rotation;
   pendingDirty = true;
   // This intent belongs to the newest queued view. A superseded diagnostic
   // frame must not force a full flash on a later routine reading frame.
@@ -415,19 +446,24 @@ void screenTaskFn(void *) {
   int lastPos = 0, lastTotal = 0;
   bool lastSavedList = false;
   View v;
+  uint8_t rotation = 0;
+  bool recovering = false;
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     for (;;) {
-      bool requestedFull;
+      bool requestedFull = recovering;
       xSemaphoreTake(viewLock, portMAX_DELAY);
-      if (!pendingDirty) { xSemaphoreGive(viewLock); break; }
-      v = pending;
-      pendingDirty = false;
-      requestedFull = pendingForceFull;
-      pendingForceFull = false;
+      if (pendingDirty) {
+        v = pending;
+        rotation = pendingRotation;
+        requestedFull = requestedFull || pendingForceFull;
+        pendingDirty = false;
+      } else if (!recovering) {
+        xSemaphoreGive(viewLock);
+        break;
+      }
       xSemaphoreGive(viewLock);
 
-      const uint8_t rotation = cfg.rotation;
       const DisplayPage page = pageKind(v.scr);
       const RefreshMode mode = policy.plan(page, requestedFull, rotation);
       if (mode == RefreshMode::Skip) continue;
@@ -436,19 +472,30 @@ void screenTaskFn(void *) {
           v.from == lastFrom && v.pos == lastPos && v.total == lastTotal &&
           v.savedList == lastSavedList;
       const uint32_t t0 = millis();
-      drawView(v);
+      drawView(v, rotation);
       if (mode == RefreshMode::Full) {
         epd.display(false);
-        fullRefreshCount = fullRefreshCount + 1;
       } else if (sameHeader) {
         // Start at y=24 to include the bottom of the 30px header. All
         // dimensions remain byte-aligned in both portrait and landscape.
         epd.displayWindow(0, 24, epd.width(), epd.height() - 24);
-        partialRefreshCount = partialRefreshCount + 1;
       } else {
         epd.display(true);  // Fast waveform even when the whole view changes.
-        partialRefreshCount = partialRefreshCount + 1;
       }
+      if (epd.epd2.busyTimedOut()) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        if (!recovering) {
+          logf("Screen BUSY timed out. Resetting the panel and retrying a full refresh.");
+          recovering = true;
+        } else if (epd.epd2.isBusy()) {
+          logf("Screen BUSY is still low after a reset. Waiting for the panel to become ready.");
+          do { vTaskDelay(pdMS_TO_TICKS(1000)); } while (epd.epd2.isBusy());
+        }
+        epd.init(0, true, 50, false);
+        continue;
+      }
+      if (recovering) logf("Screen refresh recovered");
+      recovering = false;
       // The driver powers the panel's high voltage off after each refresh.
       // Retain controller RAM while blank so the next arrival stays partial.
       policy.commit(page, rotation);
@@ -459,6 +506,8 @@ void screenTaskFn(void *) {
       lastSavedList = v.savedList;
       lastRefreshMs = millis() - t0;
       lastRefreshFull = mode == RefreshMode::Full;
+      if (lastRefreshFull) fullRefreshCount = fullRefreshCount + 1;
+      else partialRefreshCount = partialRefreshCount + 1;
       refreshCount = refreshCount + 1;
     }
   }
@@ -471,7 +520,6 @@ void screenBegin() {
     return;
   }
   const bool wired = cfg.epdWired;
-  if (wired) pinMode(PIN_EPD_BUSY, INPUT_PULLUP);
   epdDisplay = new EpdDisplay(MB_EPD370(PIN_EPD_CS, PIN_EPD_DC, wired ? PIN_EPD_RST : -1, wired ? PIN_EPD_BUSY : -1));
   if (!epdDisplay) {
     logf("Not enough memory for the screen; Wi-Fi setup continues");

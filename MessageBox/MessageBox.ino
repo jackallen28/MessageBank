@@ -1,8 +1,8 @@
 /*
-  MessageBox - main firmware v10
+  MessageBox - main firmware v11
   ==========================
   A little box that shows messages from a friend or partner. They email a private Gmail
-  inbox; the box reads it.
+  inbox; the box reads it and shows an attached picture when available.
 
   How it behaves:
     Waiting       the screen is blank and the LED ring is off.
@@ -47,6 +47,7 @@
 #include <ESPmDNS.h>
 #include <esp_system.h>
 #include <time.h>
+#include <utility>
 #include "config.h"
 #include "EncoderCounter.h"
 #include "imap.h"
@@ -121,11 +122,14 @@ bool savedList = false;    // reading saved messages instead of new ones
 int sessionDone = 0;       // new messages dealt with since the envelope was opened
 std::vector<Line> curLines;
 int scrollPos = 0;
+std::shared_ptr<const MailImage> curPicture;
+bool showingPicture = false, pictureOnly = false;
 int8_t choice = 0;
 uint32_t lastInput = 0, happyAt = 0, notifyAt = 0, lastRemind = 0;
 uint32_t ambientColor = 0; // "!led" colour shown while waiting (0 = off)
 bool ambientRainbow = false;
 uint32_t testScreenUntil = 0;
+bool screenTestActive = false;
 
 bool apOn = false;
 
@@ -162,6 +166,7 @@ String setupText() {
 
 // Sends the screen for the current state to the drawing task.
 void showUi(bool forceFull = false) {
+  if (screenTestActive) return;
   View v;
   switch (ui) {
     case UI_IDLE: v.scr = SCR_BLANK; break;
@@ -173,7 +178,7 @@ void showUi(bool forceFull = false) {
       int i = findMsg(curId);
       if (i < 0) { v.scr = SCR_BLANK; break; }
       const Message &m = store[i];
-      v.scr = ui == UI_READ ? SCR_READ : SCR_DECIDE;
+      v.scr = ui == UI_READ ? (showingPicture ? SCR_PICTURE : SCR_READ) : SCR_DECIDE;
       v.from = m.from;
       v.when = m.when;
       v.title = m.subject.length() ? m.subject : (m.body.length() ? m.body : String("(empty)"));
@@ -187,7 +192,12 @@ void showUi(bool forceFull = false) {
         v.pos = sessionDone + 1;
         v.total = sessionDone + countState(MSG_NEW);
       }
-      if (ui == UI_READ) { v.lines = curLines; v.scroll = scrollPos; }
+      if (ui == UI_READ) {
+        if (!showingPicture) v.lines = curLines;
+        v.scroll = scrollPos;
+        v.picture = curPicture;
+        v.pictureOnly = pictureOnly;
+      }
       v.choice = choice;
       break;
     }
@@ -196,6 +206,7 @@ void showUi(bool forceFull = false) {
 }
 
 void setUi(Ui u) {
+  if (u != UI_READ) curPicture.reset();
   ui = u;
   lastInput = millis();
   ringForState();
@@ -210,6 +221,7 @@ void enterEnvelope() {
 
 void goIdle(bool powerDown) {
   if (powerDown) {
+    curPicture.reset();
     hapticShutdown();
     ui = UI_IDLE;
     choiceGlow = 0;
@@ -224,7 +236,11 @@ void openMessage(int idx, bool saved) {
   const Message &m = store[idx];
   curId = m.id;
   savedList = saved;
-  curLines = layoutMessage(m.subject, m.body);
+  curPicture = m.hasPicture ? storeLoadPicture(m.id) : nullptr;
+  if (m.hasPicture && !curPicture) logf("Store: could not read the picture for message %lu", (unsigned long)m.id);
+  pictureOnly = curPicture && !m.body.length() && (!m.subject.length() || m.subject == "(no subject)");
+  showingPicture = pictureOnly;
+  curLines = pictureOnly ? std::vector<Line>() : layoutMessage(m.subject, m.body);
   scrollPos = 0;
   choice = 0;
   setUi(UI_READ);
@@ -239,9 +255,9 @@ void nextOrFinish() {
 }
 
 // A message arrived (from Gmail or the web page).
-void addMessage(const String &from, const String &subject, const String &body) {
-  storeAdd(from, subject, body, nowText());
-  logf("New message from %s: %s", from.c_str(), subject.c_str());
+void addMessage(const String &from, const String &subject, const String &body, const MailImage *picture = nullptr) {
+  storeAdd(from, subject, body, nowText(), picture);
+  logf("New message from %s: %s%s", from.c_str(), subject.c_str(), picture ? " (with picture)" : "");
   hapticNotifyFromSettings();
   switch (ui) {
     case UI_IDLE:
@@ -292,7 +308,20 @@ void onTurn(int d) {
   lastInput = millis();
   switch (ui) {
     case UI_READ: {
+      if (showingPicture) {
+        if (d > 0 || pictureOnly) { hapticBump(); break; }
+        showingPicture = false;
+        hapticTick();
+        showUi();
+        break;
+      }
       int ms = maxScroll(curLines);
+      if (d > 0 && scrollPos == ms && curPicture) {
+        showingPicture = true;
+        hapticTick();
+        showUi();
+        break;
+      }
       int s = constrain(scrollPos + d * SCROLL_LINES_PER_CLICK, 0, ms);
       if (s == scrollPos) { hapticBump(); return; }
       hapticTick();
@@ -398,7 +427,7 @@ void knobLoop() {
 
 GmailImap imap;
 SemaphoreHandle_t mailLock;
-struct Incoming { String from, subject, body; };
+struct Incoming { String from, subject, body; MailImage picture; };
 std::vector<Incoming> inbox;  // filled by the mail task, emptied by loop()
 volatile uint32_t lastMailCheck = 0;
 volatile bool mailCheckedOnce = false, mailOk = false, mailCheckNow = false, mailBusy = false;
@@ -407,18 +436,21 @@ String mailError;
 void checkMail() {
   xSemaphoreTake(networkOperationLock, portMAX_DELAY);
   if (firmwareUpdater.active()) { xSemaphoreGive(networkOperationLock); return; }
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  const String user = cfg.gmailUser, password = cfg.gmailPass, allowFrom = cfg.allowFrom;
+  xSemaphoreGive(mailLock);
   lastMailCheck = millis();
   mailBusy = true;
   String err;
   bool ok = false;
-  if (!cfg.gmailUser.length() || !cfg.gmailPass.length()) {
+  if (!user.length() || !password.length()) {
     err = "Gmail address or app password not set";
   } else {
     uint32_t t0 = millis();
-    if (imap.connect(cfg.gmailUser, cfg.gmailPass)) {
+    if (imap.connect(user, password)) {
       uint32_t uids[10];
       int n = 0;
-      ok = imap.searchUnseen(cfg.allowFrom, uids, 10, n);
+      ok = imap.searchUnseen(allowFrom, uids, 10, n);
       if (ok && n) logf("Gmail: %d unread", n);
       for (int i = 0; ok && i < n && i < 5; i++) {  // at most 5 per check, oldest first
         MailItem m;
@@ -426,7 +458,7 @@ void checkMail() {
         logf("Mail %lu from %s <%s>: '%s', %d chars", (unsigned long)m.uid, m.fromName.c_str(),
              m.fromAddr.c_str(), m.subject.c_str(), m.body.length());
         xSemaphoreTake(mailLock, portMAX_DELAY);
-        inbox.push_back({ m.fromName, m.subject, m.body });
+        inbox.push_back({ std::move(m.fromName), std::move(m.subject), std::move(m.body), std::move(m.picture) });
         xSemaphoreGive(mailLock);
         imap.markSeen(m.uid);
       }
@@ -451,19 +483,23 @@ void mailTaskFn(void *) {
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(250));
     if (!WiFi.isConnected() || firmwareUpdater.active()) continue;
-    if (!mailCheckNow && mailCheckedOnce && millis() - lastMailCheck < cfg.pollSec * 1000UL) continue;
+    xSemaphoreTake(mailLock, portMAX_DELAY);
+    const uint32_t pollSec = cfg.pollSec;
+    xSemaphoreGive(mailLock);
+    if (!mailCheckNow && mailCheckedOnce && millis() - lastMailCheck < pollSec * 1000UL) continue;
     mailCheckNow = false;
     checkMail();
   }
 }
 
 void drainInbox() {
+  if (!mailLock) return;
   std::vector<Incoming> got;
   xSemaphoreTake(mailLock, portMAX_DELAY);
   got.swap(inbox);
   xSemaphoreGive(mailLock);
   for (const Incoming &m : got)
-    if (!runInstruction(m.subject)) addMessage(m.from, m.subject, m.body);
+    if (!runInstruction(m.subject)) addMessage(m.from, m.subject, m.body, m.picture.valid() ? &m.picture : nullptr);
 }
 
 // ---------------------------------------------------------------- Wi-Fi
@@ -472,7 +508,9 @@ WebServer server(80);
 DNSServer dns;
 bool webStarted = false;
 bool apByUser = false;
-uint32_t staRetryAt = 0, apOnSince = 0, apRetryAt = 0;
+const uint32_t STA_JOIN_MS = 20000, STA_RETRY_MS = 60000, AP_RETRY_MS = 5000;
+uint32_t staRetryAt = 0, staJoinUntil = 0, apFallbackAt = 0, apOnSince = 0, apRetryAt = 0;
+bool staJoining = false, scanPending = false;
 bool mdnsUp = false, timeSet = false;
 
 void setupWeb();
@@ -486,23 +524,33 @@ void startWeb() {
 }
 
 void beginSta() {
-  if (!cfg.ssid.length()) return;
+  const uint32_t now = millis();
+  staRetryAt = now + (apOn ? STA_RETRY_MS : STA_JOIN_MS + 1000);
   logf("Joining Wi-Fi '%s'", cfg.ssid.c_str());
-  WiFi.setHostname(cfg.name.c_str());
-  WiFi.begin(cfg.ssid.c_str(), cfg.wifiPass.c_str());
+  staJoining = WiFi.STA.begin() &&
+      WiFi.STA.connect(cfg.ssid.c_str(), cfg.wifiPass.c_str());
+  staJoinUntil = now + STA_JOIN_MS;
+  if (!staJoining) logf("Could not start the Wi-Fi connection attempt");
+}
+
+void cancelStaJoin() {
+  if (!staJoining) return;
+  staJoining = false;
+  WiFi.disconnectAsync();
 }
 
 void startAP(bool byUser) {
   if (!apOn) {
-    apRetryAt = millis() + 5000;
+    apRetryAt = millis() + AP_RETRY_MS;
     logf("Starting setup Wi-Fi");
-    String pass = cfg.apPass.length() >= 8 ? cfg.apPass : String("messagebox");
-    if (!WiFi.mode(WIFI_AP_STA) || !WiFi.softAP(AP_SSID, pass.c_str())) {
+    // Enable AP+STA only while the portal needs both interfaces. This also keeps
+    // the existing station connection when the portal is opened by hand.
+    if (!WiFi.mode(WIFI_AP_STA) || !WiFi.softAP(AP_SSID, cfg.apPass.c_str())) {
       logf("Could not start setup Wi-Fi. Retrying in 5 seconds.");
       return;
     }
     apOn = true;
-    apOnSince = millis();
+    apRetryAt = apOnSince = millis();
     if (!dns.start(53, "*", WiFi.softAPIP())) {
       logf("Captive DNS unavailable. Open http://%s directly.", WiFi.softAPIP().toString().c_str());
     }
@@ -521,9 +569,12 @@ void resumeUi() {
 
 void stopAP() {
   if (!apOn) return;
+  if (!WiFi.mode(WIFI_STA)) {
+    apRetryAt = millis() + AP_RETRY_MS;
+    logf("Could not stop setup Wi-Fi");
+    return;
+  }
   dns.stop();
-  WiFi.softAPdisconnect(true);
-  WiFi.mode(WIFI_STA);
   apOn = false;
   apByUser = false;
   logf("Setup Wi-Fi off");
@@ -534,10 +585,10 @@ const char *staStateText() {
   switch (WiFi.status()) {
     case WL_CONNECTED: return "connected";
     case WL_NO_SSID_AVAIL: return "network not found";
-    case WL_CONNECT_FAILED: return "wrong password?";
+    case WL_CONNECT_FAILED: return "connection failed";
     case WL_CONNECTION_LOST: return "connection lost";
-    case WL_DISCONNECTED: return "trying";
-    case WL_IDLE_STATUS: return "idle";
+    case WL_DISCONNECTED: return staJoining ? "trying" : "disconnected";
+    case WL_IDLE_STATUS: return staJoining ? "waiting for IP address" : "idle";
     default: return "not connected";
   }
 }
@@ -553,36 +604,42 @@ void onConnected() {
     configTzTime(cfg.tz.c_str(), "pool.ntp.org", "time.google.com");
     timeSet = true;
   }
-  if (apOn && !apByUser) stopAP();
   mailCheckNow = true;
 }
 
 void wifiLoop() {
   static bool wasConnected = false;
-  bool c = WiFi.isConnected();
-  if (c && !wasConnected) onConnected();
-  if (!c && wasConnected) {
-    logf("Wi-Fi lost (%s)", staStateText());
-    staRetryAt = millis() + 30000;  // auto-reconnect gets 30 s, then the setup Wi-Fi opens
-  }
-  wasConnected = c;
-  if (c) return;
-  if (!cfg.ssid.length()) {
-    if (!apOn && (int32_t)(millis() - apRetryAt) >= 0) startAP(false);
+  const uint32_t now = millis();
+  const bool connected = WiFi.isConnected();
+  const bool portalInUse = apOn && WiFi.softAPgetStationNum() > 0;
+  if (connected) {
+    staJoining = false;
+    if (!wasConnected) onConnected();
+    wasConnected = true;
+    // Leave the setup page reachable until its clients disconnect.
+    if (apOn && !portalInUse && (!apByUser || now - apOnSince >= 15 * 60000UL) &&
+        (int32_t)(now - apRetryAt) >= 0) stopAP();
     return;
   }
-  if (!apOn && staRetryAt && (int32_t)(millis() - staRetryAt) > 0 &&
-      (int32_t)(millis() - apRetryAt) >= 0) {
-    logf("Can't join '%s' (%s)", cfg.ssid.c_str(), staStateText());
+  if (wasConnected) {
+    wasConnected = false;
+    logf("Wi-Fi lost (%s)", staStateText());
+    staRetryAt = now + 1000;
+    apFallbackAt = now + 30000;
+    apRetryAt = now;
+  }
+  const bool configured = cfg.ssid.length() != 0;
+  if (!apOn && (!configured || (int32_t)(now - apFallbackAt) >= 0) &&
+      (int32_t)(now - apRetryAt) >= 0) {
+    if (configured) logf("Can't join '%s' (%s)", cfg.ssid.c_str(), staStateText());
+    cancelStaJoin();
     startAP(false);
-    staRetryAt = millis() + 60000;
+    if (apOn) staRetryAt = now + STA_RETRY_MS;
   }
-  // Joining the home Wi-Fi moves the radio's channel and would drop a phone on the setup
-  // Wi-Fi, so only retry while nobody is connected to it.
-  if (apOn && (int32_t)(millis() - staRetryAt) > 0) {
-    staRetryAt = millis() + 60000;
-    if (WiFi.softAPgetStationNum() == 0) beginSta();
-  }
+  // AP and STA share a channel. Defer a home Wi-Fi join while anyone is using the portal.
+  if (staJoining && (portalInUse || (int32_t)(now - staJoinUntil) >= 0)) cancelStaJoin();
+  if (configured && !staJoining && !portalInUse && (int32_t)(now - staRetryAt) >= 0 &&
+      WiFi.scanComplete() != WIFI_SCAN_RUNNING) beginSta();
 }
 
 // ---------------------------------------------------------------- web server
@@ -613,9 +670,12 @@ void handleStatus() {
   j += ",\"rssi\":" + String(WiFi.RSSI());
   j += ",\"ui\":\"" + String(UI_NAMES[ui]) + "\"";
   j += ",\"enc\":" + String(encPosition()) + ",\"btn\":" + jb(btnDown) + ",\"presses\":" + String(pressCount);
-  xSemaphoreTake(mailLock, portMAX_DELAY);
-  String err = mailError;
-  xSemaphoreGive(mailLock);
+  String err;
+  if (mailLock) {
+    xSemaphoreTake(mailLock, portMAX_DELAY);
+    err = mailError;
+    xSemaphoreGive(mailLock);
+  }
   j += ",\"mail\":{\"ok\":" + String(!mailCheckedOnce ? "null" : jb(mailOk)) + ",\"busy\":" + jb(mailBusy);
   j += ",\"error\":\"" + jsonEsc(err) + "\",\"ago\":" + String(mailCheckedOnce ? (long)((millis() - lastMailCheck) / 1000) : -1L) + "}";
   j += ",\"newCount\":" + String(countState(MSG_NEW)) + ",\"savedCount\":" + String(countState(MSG_SAVED));
@@ -662,13 +722,15 @@ void handleMessages() {
 
 void handleScan() {
   int n = WiFi.scanComplete();
-  if (n == WIFI_SCAN_FAILED) {
-    WiFi.scanNetworks(true);
+  if (n == WIFI_SCAN_FAILED && !scanPending && !staJoining) n = WiFi.scanNetworks(true);
+  if (n == WIFI_SCAN_RUNNING) {
+    scanPending = true;
     server.send(200, "application/json", "{\"busy\":true}");
     return;
   }
-  if (n == WIFI_SCAN_RUNNING) {
-    server.send(200, "application/json", "{\"busy\":true}");
+  scanPending = false;
+  if (n < 0) {
+    server.send(503, "application/json", "{\"error\":\"Wi-Fi scan unavailable. Try again shortly.\"}");
     return;
   }
   String j = "{\"busy\":false,\"nets\":[";
@@ -729,33 +791,57 @@ bool blockDuringUpdate() {
 
 void handleSettings() {
   if (blockDuringUpdate()) return;
-  Settings old = cfg;
-  cfg.ssid = arg("ssid");
-  if (server.arg("wpass").length()) cfg.wifiPass = server.arg("wpass");
-  cfg.gmailUser = arg("guser");
-  if (server.arg("gpass").length()) cfg.gmailPass = arg("gpass");
-  cfg.allowFrom = arg("allow");
-  cfg.pollSec = argNum("poll", 20, 3600, cfg.pollSec);
-  if (arg("tz").length()) cfg.tz = arg("tz");
-  if (arg("name").length()) cfg.name = arg("name");
-  if (server.arg("appass").length()) {
-    if (server.arg("appass").length() < 8) { cfg = old; sendText("Setup Wi-Fi password needs 8+ characters. Nothing saved."); return; }
-    cfg.apPass = server.arg("appass");
+  Settings next = cfg;
+  if (server.hasArg("ssid")) next.ssid = server.arg("ssid");
+  if (next.ssid.length() > 32) {
+    server.send(400, "text/plain", "The Wi-Fi network name can be up to 32 bytes.");
+    return;
   }
-  readLookArgs(cfg);
-  cfg.ledMinutes = argNum("lmin", 0, 1440, cfg.ledMinutes);
-  cfg.ntfRemindMin = argNum("nrem", 0, 1440, cfg.ntfRemindMin);
-  cfg.rotation = argNum("rot", 0, 3, cfg.rotation);
-  cfg.knobReverse = argBool("krev", cfg.knobReverse);
-  cfg.epdWired = argBool("epdwire", cfg.epdWired);
+  const String wifiPass = server.arg("wpass");
+  if (!next.ssid.length() || server.arg("wopen") == "1") {
+    next.wifiPass = "";
+  } else if (wifiPass.length()) {
+    if (wifiPass.length() > 64) {
+      server.send(400, "text/plain", "The Wi-Fi password can be up to 64 bytes.");
+      return;
+    }
+    next.wifiPass = wifiPass;
+  } else if (next.ssid != cfg.ssid) {
+    next.wifiPass = "";
+  }
+  next.gmailUser = arg("guser");
+  if (server.arg("gpass").length()) next.gmailPass = arg("gpass");
+  next.allowFrom = arg("allow");
+  next.pollSec = argNum("poll", 20, 3600, next.pollSec);
+  if (arg("tz").length()) next.tz = arg("tz");
+  if (arg("name").length()) next.name = arg("name");
+  const String apPass = server.arg("appass");
+  if (apPass.length()) {
+    if (apPass.length() < 8 || apPass.length() > 63) {
+      server.send(400, "text/plain", "The setup Wi-Fi password needs 8 to 63 characters.");
+      return;
+    }
+    next.apPass = apPass;
+  }
+  readLookArgs(next);
+  next.ledMinutes = argNum("lmin", 0, 1440, next.ledMinutes);
+  next.ntfRemindMin = argNum("nrem", 0, 1440, next.ntfRemindMin);
+  next.rotation = argNum("rot", 0, 3, next.rotation);
+  next.knobReverse = argBool("krev", next.knobReverse);
+  next.epdWired = argBool("epdwire", next.epdWired);
   {
-    long mhz = argNum("epdspi", 1, 10, cfg.epdSpiMHz);
-    cfg.epdSpiMHz = mhz >= 10 ? 10 : (mhz >= 4 ? 4 : 1);
+    long mhz = argNum("epdspi", 1, 10, next.epdSpiMHz);
+    next.epdSpiMHz = mhz >= 10 ? 10 : (mhz >= 4 ? 4 : 1);
   }
+  const bool restart = next.ssid != cfg.ssid || next.wifiPass != cfg.wifiPass || next.name != cfg.name ||
+                       next.apPass != cfg.apPass || next.tz != cfg.tz || next.rotation != cfg.rotation ||
+                       next.epdWired != cfg.epdWired || next.epdSpiMHz != cfg.epdSpiMHz;
+  const bool mailChanged = next.gmailUser != cfg.gmailUser || next.gmailPass != cfg.gmailPass ||
+                           next.allowFrom != cfg.allowFrom;
+  if (mailLock) xSemaphoreTake(mailLock, portMAX_DELAY);
+  cfg = std::move(next);
+  if (mailLock) xSemaphoreGive(mailLock);
   saveSettings();
-  bool restart = cfg.ssid != old.ssid || cfg.wifiPass != old.wifiPass || cfg.name != old.name ||
-                 cfg.apPass != old.apPass || cfg.tz != old.tz || cfg.rotation != old.rotation ||
-                 cfg.epdWired != old.epdWired || cfg.epdSpiMHz != old.epdSpiMHz;
   if (restart) {
     logf("Settings saved, restarting");
     sendText("Saved. Restarting - if the home Wi-Fi works, the setup Wi-Fi closes.");
@@ -764,14 +850,15 @@ void handleSettings() {
   } else {
     logf("Settings saved");
     ringLookFromSettings();
-    if (cfg.gmailUser != old.gmailUser || cfg.gmailPass != old.gmailPass || cfg.allowFrom != old.allowFrom) mailCheckNow = true;
+    if (mailChanged) mailCheckNow = true;
     sendText("Saved");
   }
 }
 
-void testScreen(View v) {
-  screenShow(v);
+void testScreen(const View &v) {
+  screenTestActive = true;
   testScreenUntil = millis() + 12000;  // then back to the real screen
+  screenShow(v);
 }
 
 void handleTest() {
@@ -920,12 +1007,17 @@ void setup() {
   logf("Loading settings");
   loadSettings();
   WiFi.persistent(false);
+  WiFi.setHostname(cfg.name.c_str());
+  WiFi.setAutoReconnect(false);
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSleep(false);
+  apRetryAt = millis();
   if (cfg.ssid.length()) {
-    staRetryAt = millis() + 20000;
-    if (WiFi.mode(WIFI_STA)) {
-      beginSta();
-    } else {
+    apFallbackAt = millis() + STA_JOIN_MS;
+    beginSta();
+    if (!staJoining) {
       logf("Could not start home Wi-Fi. Trying setup mode.");
+      apFallbackAt = millis();
       startAP(false);
     }
   } else {
@@ -950,12 +1042,12 @@ void setup() {
 }
 
 void loop() {
+  wifiLoop();
   if (apOn) dns.processNextRequest();
   if (webStarted) server.handleClient();
   knobLoop();
   hapticsLoop();
   ledsLoop();
-  wifiLoop();
   drainInbox();
   confirmFirmware();
 
@@ -985,12 +1077,10 @@ void loop() {
   }
   // the power-down animation has finished: bring back a "!led" glow, if one was set
   if (ui == UI_IDLE && ringMode == RING_OFF && !overrideUntil && (ambientColor || ambientRainbow)) ringForState();
-  if (testScreenUntil && (int32_t)(now - testScreenUntil) > 0) {
-    testScreenUntil = 0;
+  if (screenTestActive && (int32_t)(now - testScreenUntil) >= 0) {
+    screenTestActive = false;
     showUi();
   }
   if (rebootPending && !firmwareUpdater.active() && (int32_t)(now - rebootAt) > 0) ESP.restart();
-  // Setup Wi-Fi opened by hand closes after 15 minutes if the home Wi-Fi works and nobody is on it.
-  if (apOn && apByUser && WiFi.isConnected() && now - apOnSince > 15 * 60000UL && WiFi.softAPgetStationNum() == 0) stopAP();
   delay(2);
 }

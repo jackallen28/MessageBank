@@ -1,34 +1,51 @@
-# MessageBox firmware v10
+# MessageBox firmware v11
 
-v10 is Codex's v9 with a review pass and four improvements. The source is in
-[`../MessageBox/`](../MessageBox/).
+v11 improves Wi-Fi reconnect and e-paper refresh recovery and adds emailed pictures. The source
+is in [`../MessageBox/`](../MessageBox/).
 
 | File | Use |
 |---|---|
-| `MessageBox-main-v10-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
-| `MessageBox-main-v10-OTA.bin` | App only, for the web page's **Firmware update** (from a GitHub release link). **Keeps settings and messages.** |
-| `SHA256SUMS.txt` | Checksums of both |
+| `MessageBox-main-v11-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
+| `MessageBox-main-v11-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
+| `SHA256SUMS.txt` | Checksums of the firmware images |
 
 Built with Arduino CLI 1.6, Arduino-ESP32 **3.3.7**, GxEPD2 1.6.9, Adafruit GFX 1.13.0, BusIO 1.17.4
 and NeoPixel 1.15.5. It uses the same partition table as v9 (two 1.77 MB app slots, LittleFS at
-`0x370000`), so web updates keep working between v9 and v10.
+`0x370000`), so devices on v9 or v10 can install v11 through the web page.
 
 ## Flash it
 
-**From v9 (keeps your settings and messages):** upload `MessageBox-main-v10-OTA.bin` to a public
-GitHub release, then paste its download link into the device page's **Firmware update**. After
-it restarts, **leave it running for 30 seconds** (see below).
+**From v9 or v10 (keeps your settings and messages):** paste the raw URL below into the
+device page's **Firmware update** and select **Install and restart**. After it restarts,
+leave it running for at least 30 seconds.
+
+```text
+https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v11-OTA.bin
+```
 
 **Fresh, over USB (erases settings):**
 
 1. Open https://espressif.github.io/esptool-js/ in Chrome or Edge and press **Connect**.
    If no port appears, hold BOOT while plugging in.
 2. Use the flash settings **DIO, 40 MHz, 4 MB**.
-3. Set the address to **0x0**, choose `MessageBox-main-v10-USB-installer.bin` and press **Program**.
+3. Set the address to **0x0**, choose `MessageBox-main-v11-USB-installer.bin` and press **Program**.
 4. Press RESET.
 
 If the flasher can't get into download mode with the screen connected, unplug the screen's RES
 wire (GPIO8) while flashing, as before.
+
+## Emailed pictures
+
+Send a message with a JPEG or PNG attachment to the box's Gmail address. Open the message
+and turn clockwise past its text to see the picture. Turn anticlockwise to go back to the text.
+An image-only email opens on the picture. A saved message keeps its picture after a restart.
+
+The box displays one picture per message and scales it to fit a 224 × 176 pixel monochrome area.
+Attachments can be up to 64 KiB, with dimensions up to 4096 × 4096 for baseline JPEG and
+2048 × 2048 for noninterlaced PNG. Attach a resized copy if a phone photo exceeds these limits.
+The box keeps the caption or message text when it cannot show the attachment.
+
+JPEG decoding uses ChaN's TJpgDec. [Source and license](../MessageBox/src/tjpgd/LICENSE.txt)
 
 ## Wiring
 
@@ -96,7 +113,7 @@ Once it works without them, GPIO4 and GPIO8 are free too.
 ## Test checklist
 
 - [ ] **First boot:** join `MessageBox-Setup` and open 192.168.4.1. The status shows
-      `MessageBox-main-v10`.
+      `MessageBox-main-v11`.
 - [ ] **Hardware tests:**
   - [ ] *Test each LED* (12 × red, green, blue)
   - [ ] the ticks and the new-message buzz
@@ -109,6 +126,10 @@ Once it works without them, GPIO4 and GPIO8 are free too.
       be one, for the blank at the end.
 - [ ] **Home Wi-Fi and Gmail:** send an email to the box's address and check it arrives within a
       minute.
+- [ ] **Wi-Fi recovery:** turn the router off and back on. The box rejoins the saved network and
+      closes its setup access point after its clients disconnect.
+- [ ] **Picture:** email a JPEG and a PNG, with a caption on one of them. Check that each picture
+      is upright, turn back to the caption, then save a message and reopen it after a restart.
 - [ ] **Screen SPI speed:** try 4 MHz, then 10 MHz, and watch the "last refresh … ms" line. Keep
       the fastest speed that never garbles.
 - [ ] **No BUSY/RESET (optional):** follow the steps above, and repeat the screen tests.

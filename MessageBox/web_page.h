@@ -44,9 +44,10 @@ pre{background:var(--field);border:1px solid var(--line);border-radius:9px;paddi
 <section><h2>Status</h2><div class="kv" id="kv"></div></section>
 
 <section><h2>1. Home Wi-Fi</h2>
-<label>Network name</label><input id="ssid" class="s" autocomplete="off">
-<button onclick="scan()">Scan for networks</button><div class="nets" id="nets"></div>
+<label>Network name</label><input id="ssid" class="s" autocomplete="off" oninput="$('wopen').checked=false;$('wpass').disabled=false">
+<button id="scanButton" onclick="scan()">Scan for networks</button><div class="nets" id="nets"></div>
 <label>Password</label><input id="wpass" type="password" placeholder="(unchanged)">
+<label><input id="wopen" type="checkbox" onchange="$('wpass').disabled=this.checked"> No password (open network)</label>
 <div class="hint">The device joins this network to read the Gmail inbox. 2.4 GHz networks only.</div>
 </section>
 
@@ -132,7 +133,7 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 <button id="fwinstall" class="pri" onclick="installFirmware()" disabled>Install and restart</button>
 <progress id="fwprogress" max="100" value="0" style="width:100%;margin-top:10px"></progress>
 <div id="fwstate" class="hint">Connect home Wi-Fi to install an update.</div>
-<div class="hint">Use the application OTA .bin for this ESP32-C3. Upload that file to a public GitHub release, then paste its download link here. The USB installer is for flashing over USB. Wi-Fi and saved messages are retained by an OTA update.</div>
+<div class="hint">Paste a public GitHub release or raw download link to the ESP32-C3 OTA .bin. An OTA update keeps Wi-Fi settings and saved messages.</div>
 </section>
 
 <section><h2>Maintenance</h2>
@@ -148,22 +149,39 @@ function toast(t){const e=$('toast');e.textContent=t;e.style.opacity=1;clearTime
 function post(url,data){return fetch(url,{method:'POST',body:new URLSearchParams(data)}).then(r=>r.text()).catch(()=>'No answer from the device').then(t=>{toast(t);return t})}
 function form(){const d={};document.querySelectorAll('.s').forEach(e=>d[e.id]=e.type=='checkbox'?(e.checked?'1':'0'):e.value);return d}
 function test(what,extra){post('/api/test',Object.assign(form(),{what},extra||{}))}
-function save(){const d=form();for(const k of['wpass','gpass','appass'])d[k]=v(k);post('/api/settings',d).then(()=>{loaded=false;for(const k of['wpass','gpass','appass'])$(k).value=''})}
+async function save(){
+  if(!loaded){toast('Wait for settings to load');return}
+  const d=form();for(const k of['wpass','gpass','appass'])d[k]=v(k);
+  d.wopen=$('wopen').checked?'1':'0';
+  try {
+    const r=await fetch('/api/settings',{method:'POST',body:new URLSearchParams(d)});
+    toast(await r.text());
+    if(r.ok){loaded=false;for(const k of['wpass','gpass','appass'])$(k).value=''}
+  } catch { toast('No answer from the device') }
+}
 let loaded=false,firmwareToken='';
 function installFirmware(){const url=v('fwurl').trim();if(!url){toast('Paste a GitHub application firmware link first');return}post('/api/update',{url,token:firmwareToken})}
 function fill(s){
   document.querySelectorAll('.s').forEach(e=>{if(!(e.id in s))return;if(e.type=='checkbox')e.checked=s[e.id];else e.value=s[e.id]});
-  $('wpass').placeholder=s.hasWifiPass?'(saved - leave empty to keep)':'(none saved)';
+  $('wopen').checked=!!s.ssid&&!s.hasWifiPass;
+  $('wpass').disabled=$('wopen').checked;
+  $('wpass').placeholder=s.hasWifiPass?'(leave empty to keep for saved network)':'(none saved)';
   $('gpass').placeholder=s.hasGmailPass?'(saved - leave empty to keep)':'(none saved)';
 }
 function scan(){
-  const n=$('nets');n.style.display='block';n.innerHTML='<div>Scanning...</div>';
+  const n=$('nets'),b=$('scanButton');b.disabled=true;n.style.display='block';n.textContent='Scanning...';
   const poll=()=>fetch('/api/scan').then(r=>r.json()).then(j=>{
     if(j.busy){setTimeout(poll,1200);return}
-    n.innerHTML='';if(!j.nets.length)n.innerHTML='<div>No networks found</div>';
+    b.disabled=false;
+    if(j.error){n.textContent=j.error;return}
+    n.textContent=j.nets.length?'':'No networks found';
     j.nets.forEach(x=>{const d=document.createElement('div');d.innerHTML='<span></span><span class="sub">'+x.rssi+' dBm'+(x.open?' open':'')+'</span>';
-      d.firstChild.textContent=x.ssid;d.onclick=()=>{$('ssid').value=x.ssid;n.style.display='none';$('wpass').focus()};n.appendChild(d)})
-  }).catch(()=>setTimeout(poll,1500));poll()
+      d.firstChild.textContent=x.ssid;d.onclick=()=>{
+        if(v('ssid')!==x.ssid)$('wpass').value='';
+        $('ssid').value=x.ssid;$('wopen').checked=x.open;$('wpass').disabled=x.open;
+        n.style.display='none';if(!x.open)$('wpass').focus()
+      };n.appendChild(d)})
+  }).catch(()=>{b.disabled=false;n.textContent='Wi-Fi scan unavailable. Try again shortly.'});poll()
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function loadMsgs(){fetch('/api/messages').then(r=>r.json()).then(list=>{

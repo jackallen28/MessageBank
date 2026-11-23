@@ -9,7 +9,7 @@ class RefreshPolicy {
  public:
   RefreshMode plan(DisplayPage page, bool requestedFull, uint8_t rotation) const {
     if (!initialized_ || requestedFull || rotation != rotation_ ||
-        page == DisplayPage::Pattern) {
+        page == DisplayPage::Pattern || page_ == DisplayPage::Pattern) {
       return RefreshMode::Full;
     }
     if (page == DisplayPage::Blank) {
