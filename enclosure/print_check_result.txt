@@ -25,7 +25,8 @@
   ok    LED ring (23 mm hole) over the centre column: 0.40 mm
   ok    encoder body (13 x 13) in its square pocket as printed: 0.33 mm
   ok    base inside the body (plus a 0.5 mm chamfer underneath): 0.40 mm
-  ok    knob above the deck: 0.50 mm
+  ok    knob above the deck (room to press it): 2.50 mm
+  ok    knob hole: shaft stops 0.1 mm short of its end: 0.10 mm
   ok    knob bore as printed on the 6 mm knurled shaft (press fit, negative = interference): -0.08 mm
   ok    diffuser's inner edge hidden under the knob: 1.40 mm
   ok    knob covers the nut pocket: 2.25 mm
@@ -71,7 +72,7 @@
   ok    body.stl: 140 x 145 x 111 mm, flat on the bed, fits 220 x 220 x 250
   ok    diffuser.stl: watertight (1428 triangles)
   ok    diffuser.stl: 40 x 40 x 7 mm, flat on the bed, fits 220 x 220 x 250
-  ok    knob.stl: watertight (65256 triangles)
+  ok    knob.stl: watertight (60346 triangles)
   ok    knob.stl: 20 x 20 x 16 mm, flat on the bed, fits 220 x 220 x 250
   ok    light_shroud.stl: watertight (8686 triangles)
   ok    light_shroud.stl: 74 x 74 x 16 mm, flat on the bed, fits 220 x 220 x 250
@@ -83,12 +84,12 @@
           z     3:      0 mm2 over x 136-136, y 6-139
   note  diffuser.stl: 5 mm2 facing down. The biggest areas, at height z above the bed:
           z     6:      5 mm2 over x 60-80, y -52--35
-  note  knob.stl: 147 mm2 facing down. The biggest areas, at height z above the bed:
-          z    12:     41 mm2 over x -10-10, y -10-10
-          z     9:     41 mm2 over x -10-10, y -10-10
+  note  knob.stl: 41 mm2 facing down. The biggest areas, at height z above the bed:
           z     0:     23 mm2 over x -9-9, y -9-9
-          z     6:     21 mm2 over x -10-10, y -10-10
-          z     3:     21 mm2 over x -10-10, y -10-10
+          z     6:      7 mm2 over x -10-10, y -10-10
+          z    12:      4 mm2 over x -10-10, y -10-10
+          z     9:      4 mm2 over x -10-10, y -10-10
+          z    15:      4 mm2 over x -10-10, y -10-10
   note  light_shroud.stl: 228 mm2 facing down. The biggest areas, at height z above the bed:
           z     6:    209 mm2 over x 29-45, y 29-45
           z     3:     13 mm2 over x 72-74, y 26-48
@@ -97,7 +98,7 @@
           z     9:      4 mm2 over x 14-16, y 3-3
           z    12:      4 mm2 over x 14-16, y 4-4
           z     3:      2 mm2 over x 106-109, y 28-28
-  note  body.stl (untextured): 11892 mm2 facing down. The biggest areas, at height z above the bed:
+  note  body.stl (untextured): 11891 mm2 facing down. The biggest areas, at height z above the bed:
           z    45:   8083 mm2 over x 3-137, y 3-85
           z   108:   2829 mm2 over x 3-137, y 121-142
           z    48:    330 mm2 over x 3-137, y 81-86

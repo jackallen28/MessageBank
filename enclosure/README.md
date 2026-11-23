@@ -34,7 +34,7 @@ with the knob on top, rising at the back into a block whose sloped face holds th
 | `print/light_shroud.stl` | Black. Prints flange-down. Revised for the 37 mm ring and 13 × 13 encoder; fits the same body. |
 | `print/diffuser.stl` | White. A 0.4 mm flat ring. |
 | `print/screen_carrier.stl` | Any colour (hidden). Holds the e-paper. Prints flat on its back, no supports. |
-| `print/knob.stl` | Black. A 20 mm knob with a plain top and thimble dimples round the side. Prints top-down. |
+| `print/knob.stl` | Black. A 20 mm knob with a plain top and teardrop thimble dimples round the side ([picture](knob.png), shown as printed). Prints top-down. |
 | `make_enclosure.py` | Makes all of the above. Every size is a parameter at the top. |
 | `print_check.py` | The print-readiness check below. |
 | `ring-section.png`, `section_drawing.py` | A cut through the knob: diffuser, 10 mm air gap, LED ring, encoder. |
@@ -59,7 +59,7 @@ every check.
 | Diffuser | 0.3 mm gap in the bezel; rests on a 1 mm ledge outside and the centre column (2.5 mm) inside |
 | Diffuser snap fit | 3 hooked tabs click into undercut pockets in the centre column: 0.2 mm hook, 0.55 mm room to bend, 1.2 % strain, 0.1 mm play when latched |
 | Shroud in the deck | 0.3 mm gap; screen carrier in its rails 0.35 mm; base in the body 0.4 mm |
-| Knob | 0.5 mm above the deck, 5 mm clear of the diffuser; covers the nut pocket |
+| Knob | 2.5 mm above the deck, so pressing it never bottoms out; its hole stops on the shaft's end, which sets that height. Covers the nut pocket |
 | Nut pocket | 15.5 mm, so a 10 mm socket fits |
 | Encoder plate | Has a groove for the anti-rotation tab, so the encoder sits flat |
 | Thinnest walls | 1.9 mm under the ribs; 1.0 mm at the USB pocket; 1.8 mm base under the zip-tie groove |
@@ -117,7 +117,7 @@ them on the encoder and the LED ring before the long body print. If the knob is 
 | Light shroud | **Black** | Flange down | 0.2 mm, **100 % infill** so no light gets through | None. The encoder plate over the square pocket is a 14 mm bridge. |
 | Diffuser | White PLA/PETG (PETG snaps best) | Flat, visible face down, snap tabs up (as exported) | 0.2 mm, 100 %, concentric pattern | None. The hooks overhang only 0.4 mm. |
 | Screen carrier | Any | Flat on its back (as exported) | 0.2 mm, 3 walls, 20 % | None |
-| Knob | Black | Top down (as exported) | 0.12–0.16 mm layers for crisp dimples, 100 % | None. Use a brim if it wobbles. |
+| Knob | Black | Top down (as exported) | 0.12–0.16 mm layers, 100 % | None. The dimples are teardrops with 45° roofs, so they print cleanly. Use a brim if it wobbles. |
 
 Notes:
 
@@ -224,7 +224,8 @@ each step leaves a straight path for the next screw.
 7. **Close it up:**
    - Join the wires as in [`../wiring.svg`](../wiring.svg).
    - Fit the base with the USB-C in its rear pocket and drive the 4 countersunk screws.
-   - Stick on the feet, and press the knob onto the shaft.
+   - Stick on the feet, and press the knob onto the shaft **until it stops**. The end of the
+     shaft sets it 2.5 mm above the deck.
 
 **Screen orientation:** if the picture is upside down, choose **Screen orientation → Landscape,
 flipped** on the setup page.

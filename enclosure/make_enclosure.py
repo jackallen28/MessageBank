@@ -93,9 +93,10 @@ FLANGE_R = 37.0
 SCREW_R = 33.0                 # shroud screws (M2.5 x 8, self-tapping)
 KNOB_D, KNOB_H = 20.0, 16.0   # printed knob: plain top, thimble dimples round the side
 KNOB_BORE = 5.85 + HOLE_COMP   # prints at ~5.85: a press fit on the KY-040's knurled split 6 mm shaft (6.25 for a D shaft + glue)
-KNOB_BORE_DEPTH = 11.0
-KNOB_LIFT = 0.5                # knob skirt above the deck
+KNOB_LIFT = 2.5                # knob skirt above the deck: room for the push-switch travel
 ENC_SHAFT_L = 20.0             # EC11 shaft length from the mounting face
+# the hole stops on the shaft's end (0.1 mm short), so pushing the knob fully home sets its height
+KNOB_BORE_DEPTH = ENC_SHAFT_L - (ENC_PLATE_W + PLATE_T) - KNOB_LIFT + 0.1
 
 # ESP32-C3 SuperMini
 ESP_L, ESP_W, ESP_T = 22.52, 18.0, 1.0
@@ -422,13 +423,22 @@ def make_knob():
     R = KNOB_D / 2
     k = cq.Workplane("XY").circle(R).extrude(KNOB_H).faces(">Z").edges().fillet(2.0) \
         .faces("<Z").edges().chamfer(0.4).val()
+    # Thimble dimples, sized to print well: 2.5 mm across and 0.9 mm deep, 16 round, in
+    # staggered rows. Each is a teardrop: a 45-degree point on the side that is the ceiling while
+    # printing (the knob prints top-down), so no dimple has an unsupported roof.
     dimples = []
-    rows = np.arange(2.6, KNOB_H - 2.4, 1.9)
-    per_row = 28
+    rs, depth = 1.3, 0.9
+    c = R + rs - depth
+    rows = np.arange(2.8, KNOB_H - 3.0, 2.4)
+    per_row = 16
+    h = rs / math.sqrt(2)
+    # one teardrop solid: a sphere with a 45-degree point towards -z (the ceiling while printing)
+    drop = (cq.Workplane("XZ").moveTo(0, rs).threePointArc((rs, 0), (h, -h)).lineTo(0, -2 * h).close()
+            .revolve(360, (0, 0, 0), (0, 1, 0)).val())
     for j, z in enumerate(rows):
         for i in range(per_row):
             a = 2 * math.pi * (i + 0.5 * (j % 2)) / per_row
-            dimples.append(cq.Solid.makeSphere(0.95, V((R + 0.35) * math.cos(a), (R + 0.35) * math.sin(a), z)))
+            dimples.append(drop.translate(V(c * math.cos(a), c * math.sin(a), z)))
     k = k.cut(cq.Compound.makeCompound(dimples))
     k = k.cut(cq.Solid.makeCylinder(KNOB_BORE / 2, KNOB_BORE_DEPTH, V(0, 0, -0.01)))
     k = k.cut(cq.Solid.makeCone(KNOB_BORE / 2 + 0.5, KNOB_BORE / 2, 0.5, V(0, 0, -0.01)))   # lead-in
@@ -436,7 +446,7 @@ def make_knob():
 
 
 knob_part = make_knob()
-# into place: base 0.5 mm above the deck, top up (the local w axis points into the box)
+# into place: base KNOB_LIFT above the deck, top up (the local w axis points into the box)
 knob = knob_part.rotate(V(0, 0, 0), V(1, 0, 0), 90).translate(V(RING_U, knob_w0, RING_V))
 
 # vibration module (board parallel to the deck, under the shroud, motor underneath)
