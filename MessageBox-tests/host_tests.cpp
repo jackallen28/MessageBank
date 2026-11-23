@@ -10,6 +10,29 @@
 static int fails = 0;
 #define CHECK(c) do { if (!(c)) { printf("FAIL line %d: %s\n", __LINE__, #c); fails++; } } while (0)
 
+struct FragmentedFirmwareStream {
+  const uint8_t *data;
+  uint32_t elapsed = 0;
+  size_t offset = 0;
+  bool firstRead = true;
+  bool closed = false;
+
+  int available() const {
+    if (closed) return 0;
+    const size_t received = elapsed >= 10 ? 288 : (elapsed >= 3 ? 64 : 0);
+    return received - offset;
+  }
+
+  int read(uint8_t *out, size_t count) {
+    if (firstRead) { firstRead = false; return -1; }
+    memcpy(out, data + offset, count);
+    offset += count;
+    return count;
+  }
+
+  bool connected() const { return !closed; }
+};
+
 int main() {
   // ---- update links: only GitHub release assets / raw .bin over HTTPS
   CHECK(githubFirmwareUrl("https://github.com/me/box/releases/download/v10/MessageBox-main-v10-OTA.bin"));
@@ -33,6 +56,22 @@ int main() {
     uint8_t boot[288]; memcpy(boot, app, 288); boot[32] = 0;          // no app descriptor
     CHECK(!esp32c3ApplicationHeader(boot, sizeof(boot)));
     CHECK(!esp32c3ApplicationHeader(app, 100));
+
+    FragmentedFirmwareStream stream{app};
+    // Start the simulated clock close to rollover. The TLS records arrive later.
+    const auto clock = [&] { return uint32_t(UINT32_MAX - 4 + stream.elapsed); };
+    const auto pause = [&] { ++stream.elapsed; };
+    uint8_t prefix[288];
+    auto first = readFirmwareChunk(stream, prefix, sizeof(prefix), 15, clock, pause);
+    CHECK(first.status == FirmwareReadStatus::Data && first.count == 64);
+    auto stalled = readFirmwareChunk(stream, prefix + 64, sizeof(prefix) - 64, 5, clock, pause);
+    CHECK(stalled.status == FirmwareReadStatus::TimedOut && stalled.count == 0);
+    auto rest = readFirmwareChunk(stream, prefix + 64, sizeof(prefix) - 64, 15, clock, pause);
+    CHECK(rest.status == FirmwareReadStatus::Data && rest.count == 224);
+    CHECK(memcmp(prefix, app, sizeof(prefix)) == 0 && esp32c3ApplicationHeader(prefix, sizeof(prefix)));
+    stream.closed = true;
+    auto disconnected = readFirmwareChunk(stream, prefix, sizeof(prefix), 15, clock, pause);
+    CHECK(disconnected.status == FirmwareReadStatus::Disconnected && disconnected.count == 0);
   }
   // ---- refresh policy: first frame full; reading partial; blank full once, then skipped
   {

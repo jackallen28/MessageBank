@@ -1,5 +1,5 @@
 /*
-  MessageBox - main firmware v11
+  MessageBox - main firmware v12
   ==========================
   A little box that shows messages from a friend or partner. They email a private Gmail
   inbox; the box reads it and shows an attached picture when available.

@@ -1,34 +1,48 @@
-# MessageBox firmware v11
+# MessageBox firmware v12
 
-v11 improves Wi-Fi reconnect and e-paper refresh recovery and adds emailed pictures. The source
-is in [`../MessageBox/`](../MessageBox/).
+v12 fixes an OTA download bug that could report a valid update as a merged USB image when the
+start of the file arrived in separate TLS records. It includes v11's Wi-Fi and display fixes
+and emailed pictures. The source is in [`../MessageBox/`](../MessageBox/).
 
 | File | Use |
 |---|---|
-| `MessageBox-main-v11-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
-| `MessageBox-main-v11-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
+| `MessageBox-main-v12-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
+| `MessageBox-main-v12-USB-recovery.bin` | USB recovery flashed at **0xe000** on the standard MessageBox OTA layout. **Keeps settings and messages.** |
+| `MessageBox-main-v12-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
 | `SHA256SUMS.txt` | Checksums of the firmware images |
 
 Built with Arduino CLI 1.6, Arduino-ESP32 **3.3.7**, GxEPD2 1.6.9, Adafruit GFX 1.13.0, BusIO 1.17.4
 and NeoPixel 1.15.5. It uses the same partition table as v9 (two 1.77 MB app slots, LittleFS at
-`0x370000`), so devices on v9 or v10 can install v11 through the web page.
+`0x370000`).
 
 ## Flash it
 
-**From v9 or v10 (keeps your settings and messages):** paste the raw URL below into the
+**Web update (keeps your settings and messages).** Paste the raw URL below into the
 device page's **Firmware update** and select **Install and restart**. After it restarts,
 leave it running for at least 30 seconds.
 
 ```text
-https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v11-OTA.bin
+https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v12-OTA.bin
 ```
 
-**Fresh, over USB (erases settings):**
+### USB recovery for an existing MessageBox
+
+Use this if the web updater on v9, v10, or v11 reports a merged USB image when given the OTA
+link. The recovery file is for the standard MessageBox partition table installed by the
+project's USB installer. It updates the OTA selector and first app slot. It keeps the saved
+settings, saved messages, and pictures.
+
+1. Open the [Espressif browser flasher](https://espressif.github.io/esptool-js/) in Chrome or Edge and press **Connect**.
+2. Use one file row and set its flash address to **`0xe000`**. Leave flash mode, frequency, and size on **keep**.
+3. Select `MessageBox-main-v12-USB-recovery.bin` and press **Program** with **Erase all** unchecked.
+4. Press RESET and check that the device status shows `MessageBox-main-v12`.
+
+### Fresh USB install (erases settings and messages)
 
 1. Open https://espressif.github.io/esptool-js/ in Chrome or Edge and press **Connect**.
    If no port appears, hold BOOT while plugging in.
 2. Use the flash settings **DIO, 40 MHz, 4 MB**.
-3. Set the address to **0x0**, choose `MessageBox-main-v11-USB-installer.bin` and press **Program**.
+3. Set the address to **0x0**, choose `MessageBox-main-v12-USB-installer.bin` and press **Program**.
 4. Press RESET.
 
 If the flasher can't get into download mode with the screen connected, unplug the screen's RES
@@ -113,7 +127,7 @@ Once it works without them, GPIO4 and GPIO8 are free too.
 ## Test checklist
 
 - [ ] **First boot:** join `MessageBox-Setup` and open 192.168.4.1. The status shows
-      `MessageBox-main-v11`.
+      `MessageBox-main-v12`.
 - [ ] **Hardware tests:**
   - [ ] *Test each LED* (12 × red, green, blue)
   - [ ] the ticks and the new-message buzz

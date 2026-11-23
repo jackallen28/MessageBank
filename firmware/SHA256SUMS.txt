@@ -2,3 +2,6 @@
 d607af1317b9c3c7d366b50f4025ac5d0ba73b391fde6bf322c24c635a0671e4  MessageBox-main-v10-USB-installer.bin
 201228e2471c0c416b5e4f1dff4b1ee2cee5b732fedfe6aabb9f21c370215a39  MessageBox-main-v11-OTA.bin
 2e12293e68d7a3014e10df726bbc1db83643a94baecb0033f8c04f4c2028410f  MessageBox-main-v11-USB-installer.bin
+6f224f8e7a0f80347609183f2672d8185d3e35af89c28173b569e69223237579  MessageBox-main-v12-OTA.bin
+709ea622ea032f60b9b9e965b44e5c7ab21fdb5c4672c560eb0cac25414b2738  MessageBox-main-v12-USB-installer.bin
+40feb12a1cd368b703b6b7170e9ba8b441328a6bc8696c7eb458e97a102213b5  MessageBox-main-v12-USB-recovery.bin

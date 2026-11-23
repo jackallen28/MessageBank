@@ -164,9 +164,20 @@ class FirmwareUpdater {
     if (contentType.startsWith("text/html")) { error = "The link returned a web page, not application firmware"; return false; }
     NetworkClient *stream = http.getStreamPtr();
     if (!stream) { error = "The firmware download stream closed before transfer"; return false; }
+    constexpr uint32_t idleTimeout = 15000;
+    const auto clock = [] { return millis(); };
+    const auto pause = [] { vTaskDelay(pdMS_TO_TICKS(1)); };
     uint8_t prefix[288];
-    if (stream->readBytes(prefix, sizeof(prefix)) != sizeof(prefix) ||
-        !esp32c3ApplicationHeader(prefix, sizeof(prefix))) {
+    for (size_t offset = 0; offset < sizeof(prefix);) {
+      const auto chunk = readFirmwareChunk(*stream, prefix + offset, sizeof(prefix) - offset, idleTimeout, clock, pause);
+      if (chunk.status != FirmwareReadStatus::Data) {
+        error = chunk.status == FirmwareReadStatus::TimedOut ? "Timed out waiting for the firmware header" :
+            "Connection closed before the firmware header arrived";
+        return false;
+      }
+      offset += chunk.count;
+    }
+    if (!esp32c3ApplicationHeader(prefix, sizeof(prefix))) {
       error = "Use an ESP32-C3 application OTA .bin, not the merged USB installer";
       return false;
     }
@@ -179,34 +190,24 @@ class FirmwareUpdater {
       return false;
     }
     uint8_t buffer[1024];
-    uint32_t lastByteAt = millis();
     while (written < (uint32_t)length) {
-      if (millis() - lastByteAt >= 15000) {
-        error = "Firmware download timed out. Current firmware remains selected.";
+      const size_t capacity = min(sizeof(buffer), size_t(length - written));
+      const auto chunk = readFirmwareChunk(*stream, buffer, capacity, idleTimeout, clock, pause);
+      if (chunk.status != FirmwareReadStatus::Data) {
+        error = chunk.status == FirmwareReadStatus::TimedOut ?
+            "Firmware download timed out. Current firmware remains selected." :
+            "Firmware download interrupted. Current firmware remains selected.";
         writer.abort();
         return false;
       }
-      const int available = stream->available();
-      if (available > 0) {
-        size_t count = min((size_t)available, sizeof(buffer));
-        count = min(count, (size_t)((uint32_t)length - written));
-        int received = stream->read(buffer, count);
-        if (received > 0) {
-          if (writer.write(buffer, received) != (size_t)received) {
-            error = String("Firmware write failed: ") + writer.errorString();
-            writer.abort();
-            return false;
-          }
-          written += received;
-          lastByteAt = millis();
-          progress(written, length, "Downloading and writing the inactive firmware slot");
-        }
-      } else if (!stream->connected() || millis() - lastByteAt >= 15000) {
-        error = "Firmware download interrupted. Current firmware remains selected.";
+      if (writer.write(buffer, chunk.count) != chunk.count) {
+        error = String("Firmware write failed: ") + writer.errorString();
         writer.abort();
         return false;
       }
-      vTaskDelay(pdMS_TO_TICKS(1));
+      written += chunk.count;
+      progress(written, length, "Downloading and writing the inactive firmware slot");
+      pause();
     }
     http.end();
     progress(written, length, "Validating the downloaded application");

@@ -38,3 +38,28 @@ inline bool esp32c3ApplicationHeader(const uint8_t *data, size_t length) {
       (uint32_t(data[34]) << 16) | (uint32_t(data[35]) << 24);
   return chip == 5 && appMagic == 0xABCD5432;
 }
+
+enum class FirmwareReadStatus : uint8_t { Data, TimedOut, Disconnected };
+
+struct FirmwareReadResult {
+  FirmwareReadStatus status;
+  size_t count;
+};
+
+// A secure client can return -1 between TLS records while the connection is still open.
+template <class Client, class Clock, class Pause>
+FirmwareReadResult readFirmwareChunk(Client &client, uint8_t *data, size_t capacity,
+                                     uint32_t idleTimeout, Clock clock, Pause pause) {
+  const uint32_t started = clock();
+  while (uint32_t(clock() - started) < idleTimeout) {
+    const int available = client.available();
+    if (available > 0) {
+      const size_t count = size_t(available) < capacity ? size_t(available) : capacity;
+      const int received = client.read(data, count);
+      if (received > 0) return {FirmwareReadStatus::Data, size_t(received)};
+    }
+    if (!client.connected()) return {FirmwareReadStatus::Disconnected, 0};
+    pause();
+  }
+  return {FirmwareReadStatus::TimedOut, 0};
+}
