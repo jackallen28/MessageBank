@@ -17,7 +17,7 @@ const int PIN_LEDS = 2;       // ring DIN
 const int PIN_VIBE = 20;      // motor module IN
 
 const int NUM_LEDS = 12;
-const char *const FIRMWARE_VERSION = "MessageBox-main-v12";
+const char *const FIRMWARE_VERSION = "MessageBox-main-v13";
 const char *const AP_SSID = "MessageBox-Setup";
 const uint32_t LONG_PRESS_MS = 5000;  // hold the knob this long for the setup Wi-Fi
 const uint32_t READ_TIMEOUT_MS = 180000;  // reading with no knob use for 3 min: back to the envelope

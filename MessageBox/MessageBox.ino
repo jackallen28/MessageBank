@@ -1010,7 +1010,7 @@ void setup() {
   WiFi.setHostname(cfg.name.c_str());
   WiFi.setAutoReconnect(false);
   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
-  WiFi.setSleep(false);
+  WiFi.setSleep(true);   // modem sleep (default): keeps the 3.3 V rail steady for the screen
   apRetryAt = millis();
   if (cfg.ssid.length()) {
     apFallbackAt = millis() + STA_JOIN_MS;

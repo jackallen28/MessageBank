@@ -104,12 +104,12 @@ Things to know:
 
 **Ready-made images** are in [`firmware/`](firmware/):
 
-- **Fresh USB install at 0x0:** flash `MessageBox-main-v12-USB-installer.bin` with Espressif's browser
+- **Fresh USB install at 0x0:** flash `MessageBox-main-v13-USB-installer.bin` with Espressif's browser
   flasher (DIO, 40 MHz, 4 MB). This erases settings and messages.
 - **From the device page's Firmware update:** paste the raw GitHub link to
-  `MessageBox-main-v12-OTA.bin`. This keeps settings and messages.
+  `MessageBox-main-v13-OTA.bin`. This keeps settings and messages.
 - **USB recovery at 0xe000:** for a box with the standard MessageBox OTA partition layout,
-  `MessageBox-main-v12-USB-recovery.bin` installs v12 and keeps settings and messages.
+  `MessageBox-main-v13-USB-recovery.bin` installs v12 and keeps settings and messages.
 
 [`firmware/README.md`](firmware/README.md) has the steps, a test checklist and the review of v9.
 

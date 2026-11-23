@@ -448,6 +448,7 @@ void screenTaskFn(void *) {
   View v;
   uint8_t rotation = 0;
   bool recovering = false;
+  int recoverTries = 0;
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     for (;;) {
@@ -487,15 +488,23 @@ void screenTaskFn(void *) {
         if (!recovering) {
           logf("Screen BUSY timed out. Resetting the panel and retrying a full refresh.");
           recovering = true;
-        } else if (epd.epd2.isBusy()) {
-          logf("Screen BUSY is still low after a reset. Waiting for the panel to become ready.");
-          do { vTaskDelay(pdMS_TO_TICKS(1000)); } while (epd.epd2.isBusy());
+        } else if (++recoverTries > 3) {
+          // Never wait forever: give up on this frame and let the next view try again.
+          logf("Screen still not responding after 3 resets; will retry on the next update.");
+          recovering = false;
+          recoverTries = 0;
+          epd.init(0, true, 50, false);
+          break;
+        } else {
+          logf("Screen reset %d of 3", recoverTries);
+          for (int i = 0; i < 10 && epd.epd2.isBusy(); ++i) vTaskDelay(pdMS_TO_TICKS(1000));
         }
         epd.init(0, true, 50, false);
         continue;
       }
       if (recovering) logf("Screen refresh recovered");
       recovering = false;
+      recoverTries = 0;
       // The driver powers the panel's high voltage off after each refresh.
       // Retain controller RAM while blank so the next arrival stays partial.
       policy.commit(page, rotation);

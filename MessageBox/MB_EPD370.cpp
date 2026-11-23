@@ -431,7 +431,7 @@ void MB_EPD370::_Update_Full()
   _writeCommand(0x12); //display refresh
   if (!_waitForPanel(full_refresh_time)) return;
   _PowerOff();
-  if (useFastFullUpdate) _restoreAutomaticTemperature();
+  if (useFastFullUpdate) _InitDisplay(); // undo TSFIX the library's way (v10, tested)
 }
 
 void MB_EPD370::_Update_Part()
@@ -449,5 +449,5 @@ void MB_EPD370::_Update_Part()
   _writeCommand(0x12); //display refresh
   if (!_waitForPanel(partial_refresh_time)) return;
   _PowerOff();
-  if (hasFastPartialUpdate) _restoreAutomaticTemperature();
+  if (hasFastPartialUpdate) _InitDisplay(); // undo TSFIX the library's way (v10, tested)
 }
