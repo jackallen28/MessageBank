@@ -17,7 +17,7 @@ const int PIN_LEDS = 2;       // ring DIN
 const int PIN_VIBE = 20;      // motor module IN
 
 const int NUM_LEDS = 12;
-const char *const FIRMWARE_VERSION = "MessageBox-main-v16";
+const char *const FIRMWARE_VERSION = "MessageBox-main-v17";
 const char *const AP_SSID = "MessageBox-Setup";
 const uint32_t MENU_HOLD_MS = 20000;   // hold the knob this long for the settings screen
 const uint32_t DELETE_HOLD_MS = 2000;  // while reading: hold this long to delete the message
@@ -32,7 +32,7 @@ const int MAX_MSGS = 40;
 enum Ui : uint8_t { UI_IDLE, UI_ENVELOPE, UI_READ, UI_REACT, UI_HAPPY, UI_SETUP, UI_ARRIVE, UI_NOMSG,
                UI_CAROUSEL, UI_SENT, UI_MENU, UI_SLEEP, UI_UPDATE };
 
-// The firmware's number: 15 for "MessageBox-main-v16".
+// The firmware's number: 15 for "MessageBox-main-v17".
 inline int firmwareNumber(const char *version) {
   const char *v = strrchr(version, 'v');
   return v ? atoi(v + 1) : 0;

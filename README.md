@@ -16,10 +16,10 @@ address, and the box shows it on an e-paper screen with a spinning LED ring and 
 | **Keep turning past the end** | **Quick replies:** six hand-drawn symbols, no words. Turn to pick one, press to send it | | |
 | **Press** (not on a reaction) | Done: the message is kept, and the next new one opens | | |
 | **Hold 2 s** while reading | Deletes it (the ring fills red as you hold) | Fills red | One thud |
-| **All read** | Happy envelope, then blank | Rainbow, then goes out LED by LED | A fading brrr-rr-r, like powering down |
+| **All read** | Happy envelope, then blank | Swirl of your two colours, then goes out LED by LED | A fading brrr-rr-r, like powering down |
 
-- **Press with nothing new:** "No new messages" with a happy envelope and a confetti light
-  show. **Turn the knob** from there to flick through the saved messages, newest first: each
+- **Press with nothing new:** "No new messages" with a happy envelope and sparkles in your two
+  colours. **Turn the knob** from there to flick through the saved messages, newest first: each
   card shows an open envelope, the sender's name (or nickname) big at the top, and the date
   (dd/mm/yy). Press to open one; press again to go back to the cards, or hold 2 s to delete it.
   You can reply to saved messages too.
@@ -123,12 +123,12 @@ Things to know:
 
 **Ready-made images** are in [`firmware/`](firmware/):
 
-- **Fresh USB install at 0x0:** flash `MessageBox-main-v16-USB-installer.bin` with Espressif's browser
+- **Fresh USB install at 0x0:** flash `MessageBox-main-v17-USB-installer.bin` with Espressif's browser
   flasher (DIO, 40 MHz, 4 MB). This erases settings and messages.
 - **From the device page's Firmware update:** paste the raw GitHub link to
-  `MessageBox-main-v16-OTA.bin`. This keeps settings and messages.
+  `MessageBox-main-v17-OTA.bin`. This keeps settings and messages.
 - **USB recovery at 0xe000:** for a box with the standard MessageBox OTA partition layout,
-  `MessageBox-main-v16-USB-recovery.bin` installs v16 and keeps settings and messages.
+  `MessageBox-main-v17-USB-recovery.bin` installs v17 and keeps settings and messages.
 
 [`firmware/README.md`](firmware/README.md) has the steps, a test checklist and the review of v9.
 
@@ -150,7 +150,7 @@ OTA image. The Serial Monitor runs at 115200.
 
 On first start no Wi-Fi is saved, so the box opens its own:
 
-1. The e-paper shows the setup steps and the ring turns blue.
+1. The e-paper shows the setup steps and the ring breathes in your two colours.
 2. On your phone, join **MessageBox-Setup** (password **messagebox**). The page usually pops up
    by itself. If it doesn't, open **http://192.168.4.1**.
 3. Under **Test the hardware**, check each part:
@@ -219,7 +219,7 @@ See the [image format and size limits](firmware/README.md#emailed-pictures).
   | Subject | Does |
   |---|---|
   | `!led pink` (or red, green, blue, purple, orange, yellow, white, `#rrggbb`, off) | A soft glow while waiting |
-  | `!rainbow` | Rainbow while waiting |
+  | `!rainbow` | A slow swirl of your two colours while waiting |
   | `!buzz 3` | The new-message buzz, 3 times |
   | `!ping` | The ring spins for 4 s with a tap: "thinking of you" |
   | `!clear` | Deletes every message on the box |

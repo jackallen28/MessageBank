@@ -213,19 +213,19 @@ bool envelopeSpinning(uint32_t now) {
 void ringForState() {
   switch (ui) {
     case UI_IDLE:
-      if (ambientRainbow) ringSet(RING_RAINBOW);
+      if (ambientRainbow) ringSet(RING_SWIRL, 0, 6000);  // "!rainbow": a slow swirl of your two colours
       else ringSet(ambientColor ? RING_SOLID : RING_OFF, ambientColor);
       break;
     case UI_ENVELOPE: ringSet(envelopeSpinning(millis()) ? RING_NOTIFY : RING_OFF); break;
     case UI_ARRIVE: ringSet(notifyLightsAllowed() ? RING_NOTIFY : RING_OFF); break;
     case UI_READ:
     case UI_REACT: ringSet(RING_DIM, cfg.color1); break;
-    case UI_SENT:
-    case UI_HAPPY: ringSet(RING_RAINBOW); break;
+    case UI_SENT: ringSet(RING_SWIRL, 0, 700); break;     // a quick swirl
+    case UI_HAPPY: ringSet(RING_SWIRL, 0, 1500); break;
     case UI_CAROUSEL: ringSet(RING_DIM, cfg.color2); break;
-    case UI_SETUP: ringSet(RING_SOLID, 0x0040FF); break;
-    case UI_MENU: ringSet(RING_DIM, 0xFFFFFF); break;
-    case UI_UPDATE: ringSet(RING_DIM, 0x0040FF); break;
+    case UI_SETUP: ringSet(RING_BREATHE, 0, 4000); break;
+    case UI_MENU: ringSet(RING_DIM, cfg.color2); break;
+    case UI_UPDATE: ringSet(RING_BREATHE, 0, 1600); break;
     case UI_NOMSG:   // the party animation was started on the way in
     case UI_SLEEP: break;
   }
@@ -846,7 +846,7 @@ void knobLoop() {
       const bool del = need == DELETE_HOLD_MS;
       const uint32_t showFrom = del ? 400 : 1500;  // a normal press never lights the ring
       if (held > showFrom) {
-        holdColor = del ? 0xFF1010 : 0xFFFFFF;
+        holdDelete = del;
         holdFill = (float)(held - showFrom) / (need - showFrom);
       }
       if (held >= need) {

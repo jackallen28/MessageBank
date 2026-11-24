@@ -9,7 +9,8 @@ enum RingMode : uint8_t {
   RING_OFF,
   RING_SOLID,      // one colour (instructions, setup = blue)
   RING_NOTIFY,     // a new message: spinning in the chosen style
-  RING_RAINBOW,    // rainbow spin (happy, "!rainbow")
+  RING_SWIRL,      // colour 1 and colour 2 swirling round the ring (all read, sent, "!rainbow")
+  RING_BREATHE,    // slow breathing between colour 1 and colour 2 (setup, updating)
   RING_DIM,        // soft glow of colour 1 (reading)
   RING_POWERDOWN,  // LEDs go out one by one, anticlockwise
   RING_CHASE_TEST, // each LED red, green, blue in turn
@@ -25,22 +26,24 @@ struct RingLook {
 
 RingMode ringMode = RING_OFF;
 uint32_t ringColor = 0;
+uint16_t ringPeriod = 2000;   // ms per lap or breath, for the swirl and breathe modes
 RingLook ringLook;
 uint32_t ringStart = 0;
 // overlays
 float holdFill = -1;          // 0..1 while the knob is held down (settings, or delete while reading), <0 = none
-uint32_t holdColor = 0xFFFFFF;
-int8_t choiceGlow = 0;        // -1 delete (ring pulses red), +1 keep/save (blue), 0 none
+bool holdDelete = false;      // the hold deletes the message: the filled LEDs flicker
+int8_t choiceGlow = 0;        // -1 / +1: pulses colour 1 / colour 2 (no longer used by the knob flow)
 uint32_t overrideUntil = 0;   // a web-page test owns the ring until then
 RingMode savedMode;
 uint32_t savedColor;
 
-void ringSet(RingMode m, uint32_t color = 0) {
+void ringSet(RingMode m, uint32_t color = 0, uint16_t period = 0) {
   if (overrideUntil) {  // a test is running: change what comes back after it
     savedMode = m;
     savedColor = color;
     return;
   }
+  if (period) ringPeriod = period;
   if (m == ringMode && color == ringColor && m != RING_POWERDOWN) return;
   ringMode = m;
   ringColor = color;
@@ -109,13 +112,12 @@ static void drawNotify(uint32_t t) {
         ring.setPixelColor(i, ca > cb ? ca : cb);
       }
       break;
-    case STYLE_RAINBOW:  // a comet that changes colour as it goes round
-      for (int i = 0; i < NUM_LEDS; i++) {
-        float k = cometLevel(i, head, tail);
-        uint32_t c = ring.ColorHSV((uint16_t)(turns * 65536 / 3 + i * 65536 / NUM_LEDS));
-        ring.setPixelColor(i, k > 0 ? mix(c, k) : 0);
-      }
+    case STYLE_RAINBOW: {  // "shifting comet": one comet that fades from colour 1 to colour 2 and back, lap by lap
+      float shift = 0.5f - 0.5f * cosf(turns * 3.14159f / 2);
+      uint32_t c = blend(L.c1, L.c2, shift);
+      for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, mix(c, cometLevel(i, head, tail)));
       break;
+    }
     case STYLE_CHASE: {  // every third LED, marching round, colours 1 and 2 taking turns
       int step = (int)(turns * NUM_LEDS);
       for (int i = 0; i < NUM_LEDS; i++)
@@ -157,10 +159,19 @@ void ledsLoop() {
     case RING_OFF: break;
     case RING_SOLID: ring.fill(mix(ringColor, 1)); break;
     case RING_NOTIFY: drawNotify(t); break;
-    case RING_RAINBOW:
-      for (int i = 0; i < NUM_LEDS; i++)
-        ring.setPixelColor(i, ring.gamma32(ring.ColorHSV((uint16_t)(t * 25 + i * 65536 / NUM_LEDS))));
+    case RING_SWIRL:  // half the ring colour 1, half colour 2, blended, turning
+      for (int i = 0; i < NUM_LEDS; i++) {
+        float a = (float)i / NUM_LEDS + (float)t / ringPeriod;
+        float k = 0.5f + 0.5f * cosf(a * 2 * 3.14159f);
+        ring.setPixelColor(i, mix(blend(ringLook.c2, ringLook.c1, k), 0.85f));
+      }
       break;
+    case RING_BREATHE: {  // the whole ring breathes, drifting between the two colours
+      float ph = (float)t / ringPeriod;
+      float level = 0.25f + 0.55f * (0.5f - 0.5f * cosf(ph * 2 * 3.14159f));
+      ring.fill(mix(blend(ringLook.c1, ringLook.c2, 0.5f - 0.5f * cosf(ph * 3.14159f)), level));
+      break;
+    }
     case RING_DIM: ring.fill(mix(ringColor, 0.15f)); break;
     case RING_POWERDOWN: {  // all on, then out one by one (anticlockwise), over 0.9 s
       int lit = NUM_LEDS - (int)(t / 75);
@@ -168,19 +179,21 @@ void ledsLoop() {
       if (lit <= 0) ringMode = RING_OFF;
       break;
     }
-    case RING_PARTY: {  // 3.5 s: random sparkles that fade, then a rainbow swirl that winds down
+    case RING_PARTY: {  // 3.5 s: sparkles in colour 1 and colour 2 that fade, then a fast swirl that winds down
       static float level[NUM_LEDS];
-      static uint32_t hue[NUM_LEDS];
+      static bool second[NUM_LEDS];
       if (t < 40) for (int i = 0; i < NUM_LEDS; i++) level[i] = 0;
       if (t < 2200) {
         for (int i = 0; i < NUM_LEDS; i++) level[i] *= 0.86f;
-        if (random(100) < 45) { int i = random(NUM_LEDS); level[i] = 1; hue[i] = random(65536); }
+        if (random(100) < 45) { int i = random(NUM_LEDS); level[i] = 1; second[i] = random(2); }
         for (int i = 0; i < NUM_LEDS; i++)
-          ring.setPixelColor(i, level[i] > 0.02f ? mix(ring.gamma32(ring.ColorHSV(hue[i])), level[i]) : 0);
+          ring.setPixelColor(i, level[i] > 0.02f ? mix(second[i] ? ringLook.c2 : ringLook.c1, level[i]) : 0);
       } else if (t < 3500) {
         float k = 1.0f - (t - 2200) / 1300.0f;
-        for (int i = 0; i < NUM_LEDS; i++)
-          ring.setPixelColor(i, mix(ring.gamma32(ring.ColorHSV((uint16_t)(t * 60 + i * 65536 / NUM_LEDS))), k));
+        for (int i = 0; i < NUM_LEDS; i++) {
+          float a = (float)i / NUM_LEDS + (float)t / 500;
+          ring.setPixelColor(i, mix(blend(ringLook.c2, ringLook.c1, 0.5f + 0.5f * cosf(a * 2 * 3.14159f)), k));
+        }
       } else ringMode = RING_OFF;
       break;
     }
@@ -196,15 +209,17 @@ void ledsLoop() {
   // the decision: pulsing red for delete, blue for keep (save)
   if (choiceGlow) {
     ring.clear();
-    uint32_t c = choiceGlow < 0 ? 0xFF1010 : 0x1040FF;
+    uint32_t c = choiceGlow < 0 ? ringLook.c1 : ringLook.c2;
     float k = 0.55f + 0.45f * sinf(millis() / 160.0f);
     for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, mix(c, k));
   }
-  // holding the knob: the ring fills up (white: settings; red: delete this message)
+  // holding the knob: the ring fills up from colour 1 to colour 2 (settings: steady; delete: flickering)
   if (holdFill >= 0) {
     ring.clear();
     int n = holdFill * NUM_LEDS + 0.5f;
-    for (int i = 0; i < n && i < NUM_LEDS; i++) ring.setPixelColor(i, mix(holdColor, 0.6f));
+    float level = holdDelete ? 0.35f + 0.45f * (((millis() / 90) & 1) ? 1 : 0) : 0.6f;
+    for (int i = 0; i < n && i < NUM_LEDS; i++)
+      ring.setPixelColor(i, mix(blend(ringLook.c1, ringLook.c2, (float)i / (NUM_LEDS - 1)), level));
   }
   // don't keep sending frames once the ring is dark
   bool dark = true;

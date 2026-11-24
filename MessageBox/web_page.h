@@ -65,7 +65,7 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 <section><h2>3. Lights for a new message</h2>
 <div class="row"><div><label>Style</label><select id="lstyle" class="s">
 <option value="0">Comet (colour 1 fading to colour 2)</option><option value="1">Twin comets (colour 1 and colour 2)</option>
-<option value="2">Rainbow comet</option><option value="3">Chase (every third LED)</option><option value="4">Comet + flash each lap</option></select></div>
+<option value="2">Shifting comet (colour 1 fading to colour 2 and back)</option><option value="3">Chase (every third LED)</option><option value="4">Comet + flash each lap</option></select></div>
 <div><label>Brightness (5-255)</label><input id="bright" class="s" type="number" min="5" max="255"></div></div>
 <div class="row"><div><label>Colour 1</label><input id="col1" class="s" type="color"></div><div><label>Colour 2</label><input id="col2" class="s" type="color"></div></div>
 <div class="row3"><div><label>One lap (ms, lower = faster)</label><input id="lspeed" class="s" type="number" min="200" max="10000"></div>

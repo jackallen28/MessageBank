@@ -1,6 +1,24 @@
-# MessageBox firmware v16
+# MessageBox firmware v17
 
-**v16:** the hummingbird stays longer (10 frames: it flies in, hovers, pecks twice, the envelope
+**v17:** no more rainbow. Every light uses your **Colour 1 and Colour 2**; only the pattern and
+speed change with what the box is doing:
+
+| When | Ring |
+|---|---|
+| New message, waiting | Your chosen style (comet by default), at your speed |
+| Reading | Soft glow of colour 1 |
+| Saved-message cards, settings | Soft glow of colour 2 |
+| Reply sent | Fast swirl of both colours |
+| All read | Swirl of both colours, then out LED by LED |
+| No new messages | Sparkles in both colours, then a quick swirl |
+| Setup Wi-Fi, updating | Slow breathing between the two (faster while updating) |
+| Holding the knob | Fills from colour 1 to colour 2; flickers when the hold will delete |
+| `!rainbow` email | A slow swirl of both colours |
+
+The "Rainbow comet" style is now a "Shifting comet" that fades between your two colours.
+
+
+**v16:** the hummingbird stayed longer (10 frames: it flies in, hovers, pecks twice, the envelope
 pops open and it flies off), without the "tap tap!" text. Quick replies are symbols only: the
 reply screen shows just the six pictures (a dot marks one already sent), and the reply email
 is just the hand-drawn picture (an emoji in the plain-text version).
@@ -44,9 +62,9 @@ and emailed pictures. The source is in [`../MessageBox/`](../MessageBox/).
 
 | File | Use |
 |---|---|
-| `MessageBox-main-v16-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
-| `MessageBox-main-v16-USB-recovery.bin` | USB recovery flashed at **0xe000** on the standard MessageBox OTA layout. **Keeps settings and messages.** |
-| `MessageBox-main-v16-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
+| `MessageBox-main-v17-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
+| `MessageBox-main-v17-USB-recovery.bin` | USB recovery flashed at **0xe000** on the standard MessageBox OTA layout. **Keeps settings and messages.** |
+| `MessageBox-main-v17-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
 | `SHA256SUMS.txt` | Checksums of the firmware images |
 
 Built with Arduino CLI 1.6, Arduino-ESP32 **3.3.7**, GxEPD2 1.6.9, Adafruit GFX 1.13.0, BusIO 1.17.4
@@ -60,7 +78,7 @@ device page's **Firmware update** and select **Install and restart**. After it r
 leave it running for at least 30 seconds.
 
 ```text
-https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v16-OTA.bin
+https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v17-OTA.bin
 ```
 
 ### USB recovery for an existing MessageBox
@@ -72,15 +90,15 @@ settings, saved messages, and pictures.
 
 1. Open the [Espressif browser flasher](https://espressif.github.io/esptool-js/) in Chrome or Edge and press **Connect**.
 2. Use one file row and set its flash address to **`0xe000`**. Leave flash mode, frequency, and size on **keep**.
-3. Select `MessageBox-main-v16-USB-recovery.bin` and press **Program** with **Erase all** unchecked.
-4. Press RESET and check that the device status shows `MessageBox-main-v16`.
+3. Select `MessageBox-main-v17-USB-recovery.bin` and press **Program** with **Erase all** unchecked.
+4. Press RESET and check that the device status shows `MessageBox-main-v17`.
 
 ### Fresh USB install (erases settings and messages)
 
 1. Open https://espressif.github.io/esptool-js/ in Chrome or Edge and press **Connect**.
    If no port appears, hold BOOT while plugging in.
 2. Use the flash settings **DIO, 40 MHz, 4 MB**.
-3. Set the address to **0x0**, choose `MessageBox-main-v16-USB-installer.bin` and press **Program**.
+3. Set the address to **0x0**, choose `MessageBox-main-v17-USB-installer.bin` and press **Program**.
 4. Press RESET.
 
 If the flasher can't get into download mode with the screen connected, unplug the screen's RES
@@ -165,7 +183,7 @@ Once it works without them, GPIO4 and GPIO8 are free too.
 ## Test checklist
 
 - [ ] **First boot:** join `MessageBox-Setup` and open 192.168.4.1. The status shows
-      `MessageBox-main-v16`.
+      `MessageBox-main-v17`.
 - [ ] **Hardware tests:**
   - [ ] *Test each LED* (12 × red, green, blue)
   - [ ] the ticks and the new-message buzz
