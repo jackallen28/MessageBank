@@ -9,18 +9,36 @@ address, and the box shows it on an e-paper screen with a spinning LED ring and 
 
 | | Screen | LED ring | Vibration |
 |---|---|---|---|
-| **Waiting** | Blank (the panel sleeps) | Off (or a `!led` glow) | |
-| **New message** | Pixel envelope with a heart; the badge shows how many are new | Spins in circles: style, colours and speed are settings | tick tick tick tick tick **TICK**, each tick longer and stronger |
+| **Waiting** | Blank | Off (or a `!led` glow) | |
+| **A message arrives** | A hummingbird flies in, pecks the envelope's seal and it pops open (6 fast refreshes, about 4 s) | Spins in circles: style, colours and speed are settings | tick tick tick tick tick **TICK**, each tick longer and stronger |
+| **While it waits** | Stays on the open envelope with the count of new messages | Spins for **1 minute every 10 minutes** until it's read (both settings) | Optional reminder buzz |
 | **Press the knob** | The oldest new message. **Clockwise scrolls down, anticlockwise up.** | Soft glow | A tick for every click; a double bump at the top or bottom |
-| **Press again** | "Keep this message?" **Anticlockwise = DELETE, clockwise = SAVE** | Pulses red (delete) or blue (keep) | Tick |
-| **Press to confirm** | The next new message | | Saved: soft double beat. Deleted: one thud. |
+| **Keep turning past the end** | **Quick replies:** six hand-drawn reactions. Turn to pick one, press to send it | | |
+| **Press** (not on a reaction) | Done: the message is kept, and the next new one opens | | |
+| **Hold 2 s** while reading | Deletes it (the ring fills red as you hold) | Fills red | One thud |
 | **All read** | Happy envelope, then blank | Rainbow, then goes out LED by LED | A fading brrr-rr-r, like powering down |
 
-- **Saved messages:** press the knob while the screen is blank (with nothing new) to look
-  through them, keeping or deleting each one the same way.
+- **Press with nothing new:** "No new messages" with a happy envelope and a confetti light
+  show. **Turn the knob** from there to flick through the saved messages, newest first: each
+  card shows an open envelope, the sender's name (or nickname) big at the top, and the date
+  (dd/mm/yy). Press to open one; press again to go back to the cards, or hold 2 s to delete it.
+  You can reply to saved messages too.
+- **Quick replies** go back as an email reply to the sender, **in the same thread**: "Re: their
+  subject", with the email's Message-ID and References, so it lands under their message. The
+  email shows the reaction's picture with a word ("Love it!") and an emoji in the plain-text
+  version. The reactions are the hand-drawn symbols from the Jack-in-a-Box project. If the box
+  is offline, the reply waits and goes when it's back (3 tries).
+- **Settings on the box:** hold the knob for **20 s** (the ring fills up white). Turn and press:
+  - **Lights:** on or off.
+  - **Buzz:** on or off.
+  - **Bedtime:** quiet time with no lights or buzz for new messages, from and until a time you
+    set (in 30-minute steps).
+  - **Change Wi-Fi:** opens the setup Wi-Fi (`MessageBox-Setup`) to choose another network.
+  - **Shut down:** the box sleeps (the screen says so); **turn the knob to wake it**. It doesn't
+    check Gmail while asleep.
+- **Nicknames:** set on the web page, by email address.
 - **Walking away:** if the knob isn't touched for 3 minutes while reading, the box goes back to
   the envelope, or powers down if nothing new is left.
-- **Setup:** hold the knob for **5 s** (the ring fills up) to open the setup Wi-Fi.
 - **Knob haptics:** every click and press gives a small tick. You can set its strength and
   length, or turn it off.
 - **Storage:** messages are kept in the C3's flash (up to 40), so new and saved ones survive a
@@ -37,8 +55,8 @@ The firmware is built around that:
   straight to where you stopped instead of drawing every step.
 - **Sending the picture:** the frame is kept in RAM and sent over SPI at the configured speed
   (1 MHz by default, with 4 and 10 MHz options).
-- **Fast refresh for routine changes:** scrolling, changing pages, choosing keep or delete,
-  and badge updates use the fast refresh.
+- **Fast refresh for routine changes:** the hummingbird, scrolling, changing pages, the
+  saved-message cards, reactions, the settings screen and badge updates use the fast refresh.
 - **Full refreshes:** initialization, clearing to blank, entering setup, testing the panel,
   changing rotation, and recovering from a BUSY timeout use a full refresh.
 - **Saving power:** the driver switches the panel's high voltage off after every update.
@@ -50,7 +68,7 @@ The firmware is built around that:
 | ESP32-C3 SuperMini | The brains: Wi-Fi, web page, Gmail |
 | WeAct 3.7" e-paper, black/white, 240 × 416 (GDEY037T03) | Shows the message. Keeps the picture with no power. |
 | WS2812B 12-LED ring | Spins in circles while there are new messages |
-| EC11 / KY-040 rotary encoder with push button | Scroll, choose keep or delete, confirm; hold 5 s for setup |
+| EC11 / KY-040 rotary encoder with push button | Scroll, choose a reaction, press to finish; hold 2 s to delete, 20 s for settings |
 | PWM coin vibration motor module (GND, VCC, IN) | Haptic ticks for the knob, and the new-message buzz |
 | 330 Ω resistor, 470 µF capacitor (6.3 V or more) | Protect the LED ring |
 
@@ -104,12 +122,12 @@ Things to know:
 
 **Ready-made images** are in [`firmware/`](firmware/):
 
-- **Fresh USB install at 0x0:** flash `MessageBox-main-v13-USB-installer.bin` with Espressif's browser
+- **Fresh USB install at 0x0:** flash `MessageBox-main-v14-USB-installer.bin` with Espressif's browser
   flasher (DIO, 40 MHz, 4 MB). This erases settings and messages.
 - **From the device page's Firmware update:** paste the raw GitHub link to
-  `MessageBox-main-v13-OTA.bin`. This keeps settings and messages.
+  `MessageBox-main-v14-OTA.bin`. This keeps settings and messages.
 - **USB recovery at 0xe000:** for a box with the standard MessageBox OTA partition layout,
-  `MessageBox-main-v13-USB-recovery.bin` installs v12 and keeps settings and messages.
+  `MessageBox-main-v14-USB-recovery.bin` installs v14 and keeps settings and messages.
 
 [`firmware/README.md`](firmware/README.md) has the steps, a test checklist and the review of v9.
 
@@ -140,11 +158,13 @@ On first start no Wi-Fi is saved, so the box opens its own:
          small haptic tick.
    - [ ] **LED ring:** *Test each LED* lights each LED red, then green, then blue, in order.
    - [ ] **E-paper:** *Test pattern* shows a frame with all four edges, crossed lines and bars.
-         *Envelope*, *Keep or delete* and *Happy envelope* show those screens.
+         *Hummingbird*, *Envelope*, *Quick replies*, *No new messages* and *Happy envelope*
+         show those screens.
    - [ ] **The whole flow:** *Send to the box* makes a pretend message:
-     - The ring spins, the motor goes tick ... TICK, and the envelope shows "1".
-     - Press: the message opens. Turn to scroll.
-     - Press: "Keep this message?". Turn left or right, then press to confirm.
+     - The hummingbird delivers it, the motor goes tick ... TICK, the ring spins and the
+       envelope shows "1".
+     - Press: the message opens. Turn to scroll, and keep turning for the quick replies.
+     - Press: done. (To try a real reply, put your own address in *Reply address* first.)
      - The happy envelope shows, then the box powers down.
 4. Tune the **Lights** and **Haptics** with their *Try* buttons. They play the values in the
    boxes without saving, so you can adjust them until you like them, then press **Save
@@ -177,15 +197,15 @@ the box shows.
 If the home Wi-Fi can't be joined within 20 s, or drops for 30 s, the setup Wi-Fi opens again
 on its own. The box keeps retrying the home Wi-Fi about every minute while the setup access
 point has no clients and no scan is running.
-**Hold the knob for 5 seconds**, until the ring fills up, to open the setup Wi-Fi by hand, for
-example to change networks.
+To change networks by hand, hold the knob for **20 seconds** (the ring fills up) and choose
+**Change Wi-Fi**.
 
 ## Sending messages
 
 Attach a JPEG or PNG to an email to show a picture on the box. The box converts the first
 supported image to black and white and keeps it with the message. Turn the knob clockwise past
 the last line of text to see it, and anticlockwise to return to the text. An email with only a
-picture opens directly on it. Press the knob for the usual keep-or-delete choice.
+picture opens directly on it. Turn on past the picture for the quick replies.
 
 See the [image format and size limits](firmware/README.md#emailed-pictures).
 
@@ -217,6 +237,9 @@ See the [image format and size limits](firmware/README.md#emailed-pictures).
 - `MessageBox/haptics.h`: knob ticks, the notification buzz, the power-down buzz
 - `MessageBox/store.h`: messages kept in flash
 - `MessageBox/imap.h`: the Gmail (IMAP over TLS) client and the mail text decoding
+- `MessageBox/smtp.h`: sends quick replies (Gmail SMTP over TLS), threaded under the message
+- `MessageBox/reactions.h`: the reaction pictures (made by `tools/make_reactions.py` from the
+  Jack-in-a-Box hand-drawn symbols)
 - `MessageBox/web_page.h`: the setup and test page
 - `MessageBox/certs.h`: Google's root certificates, so the box checks it's really talking to Gmail
 - `wiring.svg`: the wiring diagram (made by `tools/make_wiring.py`)
@@ -224,10 +247,6 @@ See the [image format and size limits](firmware/README.md#emailed-pictures).
   print, and how to put it together (see [`enclosure/README.md`](enclosure/README.md))
 - `screens.png`: the screens, drawn on a PC with the firmware's own drawing code
   (`tools/preview_screens.cpp`, `tools/make_previews.py`)
-
-## Next steps
-
-- Send messages back, for example with a knob press, using Gmail SMTP and the same app password.
 
 ## Third-party parts
 

@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
-"""Builds ../screens.png from the .pgm files that preview_screens writes."""
-import glob, os, sys
+"""Builds ../screens.png from the .pgm files that preview_screens writes (landscape, as in the case)."""
+import os, sys
 from PIL import Image, ImageDraw
 
 src = sys.argv[1] if len(sys.argv) > 1 else "."
 out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), "..", "screens.png")
-LABELS = {"1_envelope": "New messages", "2_read_top": "Reading", "3_read_end": "Scrolled to the end",
-          "4_read_short": "A short note", "5_decide": "Press: keep or delete?", "6_decide_delete": "Turned anticlockwise",
-          "7_decide_save": "Turned clockwise", "8_happy": "All read"}
-portrait = sorted(f for f in glob.glob(os.path.join(src, "*.pgm")) if "landscape" not in f)
-pad, lab = 18, 26
-W = len(portrait) * (240 + pad) + pad
-sheet = Image.new("RGB", (W, 416 + 2 * pad + lab), (255, 255, 255))
+SHOTS = [("a0_arrive", "1. A message arrives..."), ("a2_arrive", "2. ...the hummingbird flies in"),
+         ("a3_arrive", "3. ...pecks the seal"), ("a4_arrive", "4. ...and it pops open"),
+         ("1_envelope", "Waiting: press to read"), ("2_read_top", "Reading (turn to scroll)"),
+         ("d_react", "Turn on past the end: quick replies"), ("e_sent", "Press: sent, in the same thread"),
+         ("8_happy", "All read"), ("b_nomsg", "Press with nothing new"),
+         ("c_carousel", "Turn: the saved messages"), ("f_menu", "Hold 20 s: settings"), ("g_sleep", "Shut down")]
+W, H, pad, lab, cols = 416, 240, 18, 26, 3
+rows = (len(SHOTS) + cols - 1) // cols
+sheet = Image.new("RGB", (cols * (W + pad) + pad, rows * (H + pad + lab) + pad), (255, 255, 255))
 d = ImageDraw.Draw(sheet)
-for i, f in enumerate(portrait):
-    im = Image.open(f).convert("RGB")
-    x = pad + i * (240 + pad)
-    sheet.paste(im, (x, pad + lab))
-    d.rectangle([x - 1, pad + lab - 1, x + 240, pad + lab + 416], outline=(150, 150, 150))
-    d.text((x, pad + 4), LABELS.get(os.path.basename(f)[:-4], ""), fill=(40, 40, 40))
+for i, (name, label) in enumerate(SHOTS):
+    im = Image.open(os.path.join(src, name + "_landscape.pgm")).convert("RGB")
+    x, y = pad + (i % cols) * (W + pad), pad + (i // cols) * (H + pad + lab)
+    d.text((x, y + 6), label, fill=(40, 40, 40))
+    sheet.paste(im, (x, y + lab))
+    d.rectangle([x - 1, y + lab - 1, x + W, y + lab + H], outline=(150, 150, 150))
 sheet = sheet.resize((sheet.width * 2, sheet.height * 2), Image.NEAREST)
-sheet.save(out)
+sheet.save(out, optimize=True)
 print("wrote", os.path.normpath(out))

@@ -12,6 +12,7 @@ using std::max;
 #include <cstdlib>
 #include <cctype>
 #define PROGMEM
+#define pgm_read_byte(p) (*(const uint8_t *)(p))
 class String {
  public:
   std::string s;

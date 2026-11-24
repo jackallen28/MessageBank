@@ -1,21 +1,24 @@
 /*
-  MessageBox - main firmware v12
+  MessageBox - main firmware v14
   ==========================
   A little box that shows messages from a friend or partner. They email a private Gmail
   inbox; the box reads it and shows an attached picture when available.
 
   How it behaves:
     Waiting       the screen is blank and the LED ring is off.
-    New message   the ring spins (style and colours are settings), the motor goes
-                  tick tick tick tick tick TICK (each longer and stronger), and the screen shows
-                  a pixel envelope with a heart and the number of new messages.
+    New message   a hummingbird flies in and pecks the envelope open; the motor goes
+                  tick tick tick tick tick TICK. The screen then stays on the open envelope with the
+                  number of new messages, and the ring spins for a minute every ten minutes.
     Press         opens the oldest new message. Turn clockwise to scroll down, anticlockwise up.
-    Press         "Keep this message?": turn anticlockwise for DELETE, clockwise for SAVE,
-                  then press again to confirm. The next new message opens.
+                  Turn on past the end for the quick replies (reactions): pick one and press to
+                  send it as a reply in the same email thread.
+    Press         done with it (it's kept); the next new message opens. Hold 2 s: delete it.
     All read      a happy envelope, then the box powers down: the ring goes out LED by LED,
                   a fading brrr-rr-r, and the screen goes blank.
-    Press when blank with nothing new: look through the saved messages (keep or delete each).
-    Hold 5 s      opens the setup Wi-Fi (the ring fills up while you hold).
+    Press when blank with nothing new: "No new messages" with a happy envelope and a light show.
+                  Turn the knob then to flick through the saved messages (newest first); press to
+                  open one.
+    Hold 20 s     the settings screen: lights, buzz, bedtime (quiet hours), change Wi-Fi, shut down.
   Every click and press of the knob gives a small haptic tick (can be turned off).
 
   Board:  ESP32-C3 SuperMini (Arduino: "ESP32C3 Dev Module", USB CDC On Boot: Enabled,
@@ -46,11 +49,14 @@
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <esp_system.h>
+#include <esp_sleep.h>
+#include <driver/gpio.h>
 #include <time.h>
 #include <utility>
 #include "config.h"
 #include "EncoderCounter.h"
 #include "imap.h"
+#include "smtp.h"
 #include "haptics.h"
 #include "leds.h"
 #include "store.h"
@@ -114,18 +120,26 @@ bool longFired = false;
 
 // ---------------------------------------------------------------- what the box is doing
 
-const char *const UI_NAMES[] = { "waiting (blank)", "new message envelope", "reading", "keep or delete", "all read", "setup" };
+const char *const UI_NAMES[] = { "waiting (blank)", "new message envelope", "reading", "choosing a quick reply",
+                                 "all read", "setup", "a message arriving", "no new messages",
+                                 "looking through saved messages", "reply sent", "settings", "going to sleep" };
 Ui ui = UI_IDLE;
 
 uint32_t curId = 0;        // the message being read
-bool savedList = false;    // reading saved messages instead of new ones
+bool savedList = false;    // reading a saved message (from the carousel) instead of new ones
 int sessionDone = 0;       // new messages dealt with since the envelope was opened
 std::vector<Line> curLines;
 int scrollPos = 0;
 std::shared_ptr<const MailImage> curPicture;
 bool showingPicture = false, pictureOnly = false;
-int8_t choice = 0;
-uint32_t lastInput = 0, happyAt = 0, notifyAt = 0, lastRemind = 0;
+int8_t reactSel = -1;      // the reaction picked on the reply screen (-1: none yet)
+uint32_t lastInput = 0, happyAt = 0, notifyAt = 0, lastRemind = 0, sentAt = 0, nomsgAt = 0;
+int carouselPos = 0;       // saved messages, newest first
+int arriveFrame = 0;
+uint32_t arriveShownAt = 0, arriveRefreshes = 0;
+int menuSel = 0;
+bool menuEditing = false;
+uint32_t sleepAt = 0, sleepRefreshes = 0;
 uint32_t ambientColor = 0; // "!led" colour shown while waiting (0 = off)
 bool ambientRainbow = false;
 uint32_t testScreenUntil = 0;
@@ -133,14 +147,55 @@ bool screenTestActive = false;
 
 bool apOn = false;
 
+// Quick replies: loop() queues them, the mail task sends them and hands back the result.
+SemaphoreHandle_t mailLock;
+std::vector<ReplyJob> outbox;
+struct ReplyResult { uint32_t msgId; bool ok; bool giveUp; String error; };
+std::vector<ReplyResult> replyResults;
+volatile bool replyNow = false;
+
+// ---------------------------------------------------------------- helpers
+
+// Bedtime: no lights or buzz for new messages (only once the clock is set from the internet).
+bool quietNow() {
+  if (!cfg.bedtime || cfg.bedFrom == cfg.bedTo) return false;
+  struct tm t;
+  if (!getLocalTime(&t, 5)) return false;
+  int m = t.tm_hour * 60 + t.tm_min;
+  return cfg.bedFrom < cfg.bedTo ? (m >= cfg.bedFrom && m < cfg.bedTo) : (m >= cfg.bedFrom || m < cfg.bedTo);
+}
+bool notifyLightsAllowed() { return cfg.ledsOn && !quietNow(); }
+void notifyBuzz() { if (!quietNow()) hapticNotifyFromSettings(); }
+
+String shortDate(const Message &m) {
+  if (!m.ts) return m.when;
+  time_t t = m.ts;
+  struct tm tmv;
+  localtime_r(&t, &tmv);
+  char b[12];
+  strftime(b, sizeof(b), "%d/%m/%y", &tmv);
+  return b;
+}
+
+String senderName(const Message &m) { return displayName(m.meta.fromAddr, m.from); }
+
 int firstNew() {
   for (int i = 0; i < (int)store.size(); i++) if (store[i].state == MSG_NEW) return i;
   return -1;
 }
 
-int nextSavedAfter(uint32_t id) {
-  for (int i = 0; i < (int)store.size(); i++) if (store[i].state == MSG_SAVED && store[i].id > id) return i;
-  return -1;
+// Store indexes of the saved messages, newest first (the carousel's order).
+std::vector<int> savedIdx() {
+  std::vector<int> v;
+  for (int i = (int)store.size() - 1; i >= 0; i--) if (store[i].state == MSG_SAVED) v.push_back(i);
+  return v;
+}
+
+// While a message waits: spin for spinSec every spinEveryMin minutes (from when it arrived).
+bool envelopeSpinning(uint32_t now) {
+  if (!notifyLightsAllowed() || !cfg.spinSec) return false;
+  if (!cfg.spinEveryMin) return true;
+  return (now - notifyAt) % (cfg.spinEveryMin * 60000UL) < cfg.spinSec * 1000UL;
 }
 
 void ringForState() {
@@ -149,19 +204,34 @@ void ringForState() {
       if (ambientRainbow) ringSet(RING_RAINBOW);
       else ringSet(ambientColor ? RING_SOLID : RING_OFF, ambientColor);
       break;
-    case UI_ENVELOPE: ringSet(RING_NOTIFY); break;
-    case UI_READ: ringSet(RING_DIM, cfg.color1); break;
-    case UI_DECIDE: ringSet(RING_DIM, cfg.color1); break;
+    case UI_ENVELOPE: ringSet(envelopeSpinning(millis()) ? RING_NOTIFY : RING_OFF); break;
+    case UI_ARRIVE: ringSet(notifyLightsAllowed() ? RING_NOTIFY : RING_OFF); break;
+    case UI_READ:
+    case UI_REACT: ringSet(RING_DIM, cfg.color1); break;
+    case UI_SENT:
     case UI_HAPPY: ringSet(RING_RAINBOW); break;
+    case UI_CAROUSEL: ringSet(RING_DIM, cfg.color2); break;
     case UI_SETUP: ringSet(RING_SOLID, 0x0040FF); break;
+    case UI_MENU: ringSet(RING_DIM, 0xFFFFFF); break;
+    case UI_NOMSG:   // the party animation was started on the way in
+    case UI_SLEEP: break;
   }
-  choiceGlow = ui == UI_DECIDE ? choice : 0;
+  choiceGlow = 0;
 }
 
 String setupText() {
   return "1. On your phone, join the Wi-Fi\n    " + String(AP_SSID) + "\n    password: " + cfg.apPass +
          "\n2. Open http://192.168.4.1\n3. Test the parts, then enter your Wi-Fi and Gmail details.\n\n" +
          (cfg.ssid.length() ? "Saved Wi-Fi: " + cfg.ssid + " (retrying)" : String("No Wi-Fi saved yet"));
+}
+
+enum MenuId : uint8_t { MI_LIGHTS, MI_BUZZ, MI_BED, MI_FROM, MI_TO, MI_WIFI, MI_SLEEP, MI_EXIT, MI_COUNT };
+
+std::vector<MenuItem> menuItems() {
+  auto onOff = [](bool b) { return String(b ? "On" : "Off"); };
+  return { { "Lights", onOff(cfg.ledsOn) }, { "Buzz for new messages", onOff(cfg.notifyVibe) },
+           { "Bedtime (quiet)", onOff(cfg.bedtime) }, { "Quiet from", hhmm(cfg.bedFrom) },
+           { "Quiet until", hhmm(cfg.bedTo) }, { "Change Wi-Fi", "" }, { "Shut down", "" }, { "Exit", "" } };
 }
 
 // Sends the screen for the current state to the drawing task.
@@ -171,34 +241,57 @@ void showUi(bool forceFull = false) {
   switch (ui) {
     case UI_IDLE: v.scr = SCR_BLANK; break;
     case UI_ENVELOPE: v.scr = SCR_ENVELOPE; v.count = countState(MSG_NEW); break;
+    case UI_ARRIVE: v.scr = SCR_ARRIVE; v.frame = arriveFrame; break;
     case UI_HAPPY: v.scr = SCR_HAPPY; break;
     case UI_SETUP: v.scr = SCR_SETUP; v.text = setupText(); break;
+    case UI_NOMSG: v.scr = SCR_NOMSG; v.savedCount = countState(MSG_SAVED); break;
+    case UI_MENU: v.scr = SCR_MENU; v.menu = menuItems(); v.menuSel = menuSel; v.menuEditing = menuEditing; break;
+    case UI_SLEEP: v.scr = SCR_SLEEP; break;
+    case UI_CAROUSEL: {
+      std::vector<int> s = savedIdx();
+      if (s.empty()) { v.scr = SCR_BLANK; break; }
+      carouselPos = constrain(carouselPos, 0, (int)s.size() - 1);
+      const Message &m = store[s[carouselPos]];
+      v.scr = SCR_CAROUSEL;
+      v.from = senderName(m);
+      v.when = shortDate(m);
+      v.title = m.subject.length() && m.subject != "(no subject)" ? m.subject : m.body.substring(0, 60);
+      v.pos = carouselPos + 1;
+      v.total = s.size();
+      v.sentReaction = m.replyState == REPLY_SENT || m.replyState == REPLY_PENDING ? m.reaction : -1;
+      break;
+    }
     case UI_READ:
-    case UI_DECIDE: {
+    case UI_REACT:
+    case UI_SENT: {
       int i = findMsg(curId);
       if (i < 0) { v.scr = SCR_BLANK; break; }
       const Message &m = store[i];
-      v.scr = ui == UI_READ ? (showingPicture ? SCR_PICTURE : SCR_READ) : SCR_DECIDE;
-      v.from = m.from;
+      v.scr = ui == UI_SENT ? SCR_SENT : ui == UI_REACT ? SCR_REACT : (showingPicture ? SCR_PICTURE : SCR_READ);
+      v.from = senderName(m);
       v.when = m.when;
       v.title = m.subject.length() ? m.subject : (m.body.length() ? m.body : String("(empty)"));
       v.savedList = savedList;
       if (savedList) {
-        int pos = 0;
-        for (const Message &s : store) { if (s.state == MSG_SAVED) pos++; if (s.id == curId) break; }
-        v.pos = pos;
-        v.total = countState(MSG_SAVED);
+        std::vector<int> s = savedIdx();
+        v.total = s.size();
+        for (int k = 0; k < (int)s.size(); k++) if (s[k] == i) v.pos = k + 1;
       } else {
         v.pos = sessionDone + 1;
         v.total = sessionDone + countState(MSG_NEW);
       }
+      v.sentReaction = m.replyState == REPLY_SENT || m.replyState == REPLY_PENDING ? m.reaction : -1;
       if (ui == UI_READ) {
         if (!showingPicture) v.lines = curLines;
         v.scroll = scrollPos;
         v.picture = curPicture;
         v.pictureOnly = pictureOnly;
+      } else if (ui == UI_REACT) {
+        v.reaction = reactSel;
+      } else {
+        v.reaction = m.reaction;
+        v.replyQueued = m.replyState == REPLY_PENDING && !WiFi.isConnected();
       }
-      v.choice = choice;
       break;
     }
   }
@@ -206,7 +299,7 @@ void showUi(bool forceFull = false) {
 }
 
 void setUi(Ui u) {
-  if (u != UI_READ) curPicture.reset();
+  if (u != UI_READ && u != UI_REACT && u != UI_SENT) curPicture.reset();
   ui = u;
   lastInput = millis();
   ringForState();
@@ -215,7 +308,6 @@ void setUi(Ui u) {
 
 void enterEnvelope() {
   ringLookFromSettings();
-  notifyAt = lastRemind = millis();
   setUi(UI_ENVELOPE);
 }
 
@@ -225,11 +317,18 @@ void goIdle(bool powerDown) {
     hapticShutdown();
     ui = UI_IDLE;
     choiceGlow = 0;
-    ringSet(RING_POWERDOWN, cfg.color1);  // the ring goes out LED by LED
+    if (cfg.ledsOn) ringSet(RING_POWERDOWN, cfg.color1);  // the ring goes out LED by LED
+    else ringSet(RING_OFF);
     showUi();
     return;
   }
   setUi(UI_IDLE);
+}
+
+// Back to what the box should show when nobody is using it.
+void resumeUi() {
+  if (firstNew() >= 0) enterEnvelope();
+  else setUi(UI_IDLE);
 }
 
 void openMessage(int idx, bool saved) {
@@ -242,30 +341,200 @@ void openMessage(int idx, bool saved) {
   showingPicture = pictureOnly;
   curLines = pictureOnly ? std::vector<Line>() : layoutMessage(m.subject, m.body);
   scrollPos = 0;
-  choice = 0;
+  reactSel = -1;
   setUi(UI_READ);
   logf("Reading %s message %lu from %s", saved ? "saved" : "new", (unsigned long)curId, m.from.c_str());
 }
 
-void nextOrFinish() {
-  int i = savedList ? nextSavedAfter(curId) : firstNew();
-  if (i >= 0) { openMessage(i, savedList); return; }
+// After a message: the next new one, or "All read!"; from the carousel, back to the carousel.
+void afterMessage(int carouselKeep) {
+  if (savedList) {
+    if (firstNew() >= 0) { enterEnvelope(); return; }  // something new came in meanwhile
+    std::vector<int> s = savedIdx();
+    if (s.empty()) { goIdle(false); return; }
+    carouselPos = constrain(carouselKeep, 0, (int)s.size() - 1);
+    setUi(UI_CAROUSEL);
+    return;
+  }
+  int n = firstNew();
+  if (n >= 0) { openMessage(n, false); return; }
   happyAt = millis();
   setUi(UI_HAPPY);
 }
 
+int carouselIndexOf(uint32_t id) {
+  std::vector<int> s = savedIdx();
+  for (int k = 0; k < (int)s.size(); k++) if (store[s[k]].id == id) return k;
+  return carouselPos;
+}
+
+// Press while reading: done with it. A new message is kept (it joins the saved ones).
+void exitMessage() {
+  int i = findMsg(curId);
+  if (i >= 0 && store[i].state == MSG_NEW) {
+    storeSetState(curId, MSG_SAVED);
+    sessionDone++;
+  }
+  afterMessage(carouselIndexOf(curId));
+}
+
+// Hold while reading: delete it.
+void deleteCurrent() {
+  int i = findMsg(curId);
+  if (i < 0) return;
+  const bool wasNew = store[i].state == MSG_NEW;
+  const int keep = savedList ? carouselIndexOf(curId) : 0;
+  storeDelete(curId);
+  logf("Message %lu deleted", (unsigned long)curId);
+  Pulse p[1] = { { 255, 160, 0 } };  // one firm thud
+  playPulses(p, 1);
+  if (wasNew) sessionDone++;
+  afterMessage(keep);
+}
+
+void queueReply(const Message &m) {
+  ReplyJob job;
+  job.msgId = m.id;
+  job.reaction = m.reaction;
+  job.to = m.meta.replyTo.length() ? m.meta.replyTo : m.meta.fromAddr;
+  job.subject = m.meta.rawSubject.length() ? m.meta.rawSubject : (m.subject == "(no subject)" ? String("") : m.subject);
+  job.inReplyTo = m.meta.msgId;
+  job.refs = m.meta.refs;
+  job.toName = m.from;
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  for (size_t k = 0; k < outbox.size(); k++)
+    if (outbox[k].msgId == job.msgId) { outbox.erase(outbox.begin() + k); break; }  // a newer reaction replaces it
+  outbox.push_back(job);
+  xSemaphoreGive(mailLock);
+  replyNow = true;
+}
+
+// Press on the reply screen: send the reaction as a threaded email reply.
+void sendReaction() {
+  int i = findMsg(curId);
+  if (i < 0) return;
+  const Message &m = store[i];
+  if (!(m.meta.replyTo.length() || m.meta.fromAddr.length())) {
+    logf("No email address to reply to (a test message?)");
+    hapticNope();
+    return;
+  }
+  storeSetReply(curId, reactSel, REPLY_PENDING);
+  queueReply(store[findMsg(curId)]);
+  logf("Quick reply '%s' to %s queued", REACTIONS[reactSel].label, senderName(m).c_str());
+  hapticConfirm(true);
+  sentAt = millis();
+  setUi(UI_SENT);
+}
+
+void showArriveFrame() {
+  arriveRefreshes = refreshCount;
+  arriveShownAt = millis();
+  showUi();
+}
+
+// A message came in: the hummingbird brings it.
+void startArrival() {
+  arriveFrame = 0;
+  ringLookFromSettings();
+  ui = UI_ARRIVE;
+  lastInput = millis();
+  ringForState();
+  showArriveFrame();
+}
+
+void enterNoMsg() {
+  nomsgAt = millis();
+  setUi(UI_NOMSG);
+  if (cfg.ledsOn) ringSet(RING_PARTY);
+  Pulse p[3] = { { 140, 25, 90 }, { 170, 25, 90 }, { 220, 45, 0 } };  // a happy little da-da-DA
+  if (cfg.knobHaptics) playPulses(p, 3);
+}
+
+void openMenu() {
+  menuSel = 0;
+  menuEditing = false;
+  logf("Knob held 20 s: settings");
+  Pulse p = { 255, 300, 0 };
+  playPulses(&p, 1);
+  setUi(UI_MENU);
+}
+
+void enterSleep() {
+  logf("Shutting down (turn the knob to wake)");
+  ui = UI_SLEEP;
+  lastInput = sleepAt = millis();
+  sleepRefreshes = refreshCount;
+  hapticShutdown();
+  ringSet(cfg.ledsOn ? RING_POWERDOWN : RING_OFF, cfg.color1);
+  showUi();
+}
+
+// Deep sleep until the knob is turned (GPIO0, the encoder's CLK, changes level). The screen keeps
+// showing "Sleeping" without power. The button can't wake it: GPIO21 can't wake an ESP32-C3.
+void goToSleep() {
+  ring.clear();
+  ring.show();
+  motorWrite(0);
+  pinMode(PIN_VIBE, OUTPUT);
+  digitalWrite(PIN_VIBE, LOW);
+  gpio_hold_en((gpio_num_t)PIN_VIBE);  // keep the motor off while asleep
+  gpio_deep_sleep_hold_en();
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  gpio_pullup_en((gpio_num_t)PIN_ENC_A);
+  gpio_pulldown_dis((gpio_num_t)PIN_ENC_A);
+  const int level = digitalRead(PIN_ENC_A);
+  esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_ENC_A, level ? ESP_GPIO_WAKEUP_GPIO_LOW : ESP_GPIO_WAKEUP_GPIO_HIGH);
+  Serial.flush();
+  esp_deep_sleep_start();
+}
+
+void startAP(bool byUser);
+
+void menuPress() {
+  switch (menuSel) {
+    case MI_LIGHTS: cfg.ledsOn = !cfg.ledsOn; saveSettings(); break;
+    case MI_BUZZ:
+      cfg.notifyVibe = !cfg.notifyVibe;
+      saveSettings();
+      if (cfg.notifyVibe) hapticNotifyFromSettings();  // a taste of it
+      break;
+    case MI_BED: cfg.bedtime = !cfg.bedtime; saveSettings(); break;
+    case MI_FROM:
+    case MI_TO:
+      menuEditing = !menuEditing;
+      if (!menuEditing) saveSettings();
+      break;
+    case MI_WIFI: startAP(true); return;
+    case MI_SLEEP: enterSleep(); return;
+    case MI_EXIT: resumeUi(); return;
+  }
+  hapticTick(true);
+  ringForState();
+  showUi();
+}
+
 // A message arrived (from Gmail or the web page).
-void addMessage(const String &from, const String &subject, const String &body, const MailImage *picture = nullptr) {
-  storeAdd(from, subject, body, nowText(), picture);
+void addMessage(const String &from, const String &subject, const String &body, const MailImage *picture = nullptr,
+                const MsgMeta *meta = nullptr) {
+  storeAdd(from, subject, body, nowText(), picture, meta, time(nullptr) > 1700000000 ? (uint32_t)time(nullptr) : 0);
   logf("New message from %s: %s%s", from.c_str(), subject.c_str(), picture ? " (with picture)" : "");
-  hapticNotifyFromSettings();
+  notifyAt = lastRemind = millis();
+  notifyBuzz();
   switch (ui) {
     case UI_IDLE:
-    case UI_HAPPY: enterEnvelope(); break;
-    case UI_ENVELOPE: notifyAt = lastRemind = millis(); ringSet(RING_NOTIFY); showUi(); break;  // new number on the badge
+    case UI_HAPPY:
+    case UI_NOMSG:
+    case UI_CAROUSEL:
+    case UI_ENVELOPE: startArrival(); break;
+    case UI_ARRIVE: break;  // the count is right when it lands
     case UI_READ:
-    case UI_DECIDE: if (!savedList) showUi(); break;  // the "2/5" in the header grows
-    case UI_SETUP: break;  // the envelope shows once setup is left
+    case UI_REACT:
+    case UI_SENT: if (!savedList) showUi(); break;  // the "2/5" in the header grows
+    case UI_SETUP:
+    case UI_MENU:
+    case UI_SLEEP: break;  // the envelope shows afterwards
   }
 }
 
@@ -293,7 +562,7 @@ bool runInstruction(const String &subjectIn) {
     hapticTick(true);
   } else if (cmd == "clear") {
     storeClear();
-    if (ui != UI_SETUP) goIdle(false);
+    if (ui != UI_SETUP && ui != UI_MENU) goIdle(false);
   } else {
     logf("Unknown instruction '%s', shown as a message", cmd.c_str());
     return false;
@@ -307,19 +576,33 @@ bool runInstruction(const String &subjectIn) {
 void onTurn(int d) {
   lastInput = millis();
   switch (ui) {
+    case UI_NOMSG:
+      if (countState(MSG_SAVED) > 0) { hapticTick(); carouselPos = 0; setUi(UI_CAROUSEL); }
+      else hapticBump();
+      break;
+    case UI_CAROUSEL: {
+      int n = countState(MSG_SAVED);
+      int p = constrain(carouselPos + d, 0, max(0, n - 1));
+      if (p == carouselPos) { hapticBump(); break; }
+      hapticTick();
+      carouselPos = p;
+      showUi();
+      break;
+    }
     case UI_READ: {
       if (showingPicture) {
-        if (d > 0 || pictureOnly) { hapticBump(); break; }
+        if (d > 0) { hapticTick(); reactSel = -1; setUi(UI_REACT); break; }  // past the picture: reply
+        if (pictureOnly) { hapticBump(); break; }
         showingPicture = false;
         hapticTick();
         showUi();
         break;
       }
       int ms = maxScroll(curLines);
-      if (d > 0 && scrollPos == ms && curPicture) {
-        showingPicture = true;
+      if (d > 0 && scrollPos == ms) {
         hapticTick();
-        showUi();
+        if (curPicture) { showingPicture = true; showUi(); }
+        else { reactSel = -1; setUi(UI_REACT); }
         break;
       }
       int s = constrain(scrollPos + d * SCROLL_LINES_PER_CLICK, 0, ms);
@@ -329,15 +612,36 @@ void onTurn(int d) {
       showUi();
       break;
     }
-    case UI_DECIDE: {
-      int8_t c = d < 0 ? -1 : 1;  // anticlockwise = delete, clockwise = save
-      if (c == choice) { hapticBump(); return; }
+    case UI_REACT: {
+      int s = reactSel + d;
+      if (s < -1) {  // back to the message, where it was left
+        hapticTick();
+        showingPicture = curPicture != nullptr;
+        scrollPos = maxScroll(curLines);
+        setUi(UI_READ);
+        break;
+      }
+      s = min(s, REACTION_COUNT - 1);
+      if (s == reactSel) { hapticBump(); break; }
       hapticTick();
-      choice = c;
-      choiceGlow = c;
+      reactSel = s;
       showUi();
       break;
     }
+    case UI_MENU:
+      if (menuEditing) {
+        uint16_t &t = menuSel == MI_FROM ? cfg.bedFrom : cfg.bedTo;
+        t = (uint16_t)(((int)t + d * 30 + 1440 * 4) % 1440);
+        hapticTick();
+        showUi();
+      } else {
+        int s = constrain(menuSel + d, 0, MI_COUNT - 1);
+        if (s == menuSel) { hapticBump(); break; }
+        hapticTick();
+        menuSel = s;
+        showUi();
+      }
+      break;
     default:
       hapticTick();
   }
@@ -349,12 +653,11 @@ void onPress() {
   switch (ui) {
     case UI_IDLE: {
       int n = firstNew();
-      if (n >= 0) { hapticTick(true); sessionDone = 0; openMessage(n, false); break; }
-      int s = nextSavedAfter(0);
-      if (s >= 0) { hapticTick(true); openMessage(s, true); }
-      else hapticNope();  // nothing to show
+      if (n >= 0) { hapticTick(true); sessionDone = 0; openMessage(n, false); }
+      else enterNoMsg();
       break;
     }
+    case UI_ARRIVE:
     case UI_ENVELOPE: {
       hapticsStop();
       hapticTick(true);
@@ -364,30 +667,47 @@ void onPress() {
       else goIdle(false);
       break;
     }
+    case UI_NOMSG:
+      hapticTick(true);
+      goIdle(false);
+      break;
+    case UI_CAROUSEL: {
+      std::vector<int> s = savedIdx();
+      if (carouselPos < 0 || carouselPos >= (int)s.size()) { hapticNope(); break; }
+      hapticTick(true);
+      openMessage(s[carouselPos], true);
+      break;
+    }
     case UI_READ:
       hapticTick(true);
-      choice = 0;
-      setUi(UI_DECIDE);
+      exitMessage();
       break;
-    case UI_DECIDE:
-      if (!choice) { hapticNope(); return; }
-      hapticConfirm(choice > 0);
-      if (choice > 0) storeSetState(curId, MSG_SAVED);
-      else storeDelete(curId);
-      logf("Message %lu %s", (unsigned long)curId, choice > 0 ? "saved" : "deleted");
-      if (!savedList) sessionDone++;
-      choice = 0;
-      choiceGlow = 0;
-      nextOrFinish();
+    case UI_REACT:
+      if (reactSel < 0) { hapticTick(true); exitMessage(); }
+      else sendReaction();
+      break;
+    case UI_SENT:
+      hapticTick(true);
+      exitMessage();
+      break;
+    case UI_MENU:
+      menuPress();
       break;
     case UI_HAPPY:
     case UI_SETUP:
       hapticTick(true);
       break;
+    case UI_SLEEP:
+      break;
   }
 }
 
-void startAP(bool byUser);
+// How long a hold does something here: 2 s deletes the message being read; 20 s opens settings.
+uint32_t holdNeeded() {
+  if (ui == UI_READ || ui == UI_REACT) return DELETE_HOLD_MS;
+  if (ui == UI_MENU || ui == UI_SLEEP || ui == UI_SENT || ui == UI_SETUP) return 0;
+  return MENU_HOLD_MS;
+}
 
 void knobLoop() {
   bool raw = digitalRead(PIN_ENC_SW) == LOW;
@@ -399,19 +719,26 @@ void knobLoop() {
       longFired = false;
     } else {
       holdFill = -1;
-      if (!longFired) onPress();
+      // a press is a short press: letting go of a hold that didn't finish just cancels it
+      if (!longFired && millis() - btnDownAt < 800) onPress();
     }
   }
   if (btnDown && !longFired) {
-    uint32_t held = millis() - btnDownAt;
-    if (held > 800) holdFill = (float)held / LONG_PRESS_MS;
-    if (held >= LONG_PRESS_MS) {
-      longFired = true;
-      holdFill = -1;
-      logf("Knob held 5 s: setup Wi-Fi");
-      Pulse p = { 255, 300, 0 };
-      playPulses(&p, 1);
-      startAP(true);
+    const uint32_t held = millis() - btnDownAt, need = holdNeeded();
+    if (need) {
+      const bool del = need == DELETE_HOLD_MS;
+      const uint32_t showFrom = del ? 400 : 1500;  // a normal press never lights the ring
+      if (held > showFrom) {
+        holdColor = del ? 0xFF1010 : 0xFFFFFF;
+        holdFill = (float)(held - showFrom) / (need - showFrom);
+      }
+      if (held >= need) {
+        longFired = true;
+        holdFill = -1;
+        lastInput = millis();
+        if (del) deleteCurrent();
+        else openMenu();
+      }
     }
   }
   static int32_t lastPos = 0;
@@ -426,8 +753,7 @@ void knobLoop() {
 // ---------------------------------------------------------------- Gmail (its own task)
 
 GmailImap imap;
-SemaphoreHandle_t mailLock;
-struct Incoming { String from, subject, body; MailImage picture; };
+struct Incoming { String from, subject, body; MailImage picture; MsgMeta meta; };
 std::vector<Incoming> inbox;  // filled by the mail task, emptied by loop()
 volatile uint32_t lastMailCheck = 0;
 volatile bool mailCheckedOnce = false, mailOk = false, mailCheckNow = false, mailBusy = false;
@@ -458,7 +784,8 @@ void checkMail() {
         logf("Mail %lu from %s <%s>: '%s', %d chars", (unsigned long)m.uid, m.fromName.c_str(),
              m.fromAddr.c_str(), m.subject.c_str(), m.body.length());
         xSemaphoreTake(mailLock, portMAX_DELAY);
-        inbox.push_back({ std::move(m.fromName), std::move(m.subject), std::move(m.body), std::move(m.picture) });
+        MsgMeta meta{ m.fromAddr, m.replyTo, m.msgId, m.refs, m.rawSubject };
+        inbox.push_back({ std::move(m.fromName), std::move(m.subject), std::move(m.body), std::move(m.picture), meta });
         xSemaphoreGive(mailLock);
         imap.markSeen(m.uid);
       }
@@ -479,10 +806,57 @@ void checkMail() {
   xSemaphoreGive(networkOperationLock);
 }
 
+GmailSmtp smtp;
+
+// Sends the oldest queued quick reply. Transient failures are retried (3 tries, a minute apart).
+void sendOneReply() {
+  xSemaphoreTake(networkOperationLock, portMAX_DELAY);
+  if (firmwareUpdater.active()) { xSemaphoreGive(networkOperationLock); return; }
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  int pick = -1;
+  for (size_t k = 0; k < outbox.size(); k++)
+    if ((int32_t)(millis() - outbox[k].notBefore) >= 0) { pick = k; break; }
+  if (pick < 0) { xSemaphoreGive(mailLock); xSemaphoreGive(networkOperationLock); return; }
+  ReplyJob job = outbox[pick];
+  const String user = cfg.gmailUser, password = cfg.gmailPass;
+  xSemaphoreGive(mailLock);
+  bool ok = false;
+  String err;
+  if (!user.length() || !password.length()) err = "Gmail address or app password not set";
+  else {
+    uint32_t t0 = millis();
+    ok = smtp.send(user, password, job);
+    err = smtp.error;
+    logf("Quick reply to %s: %s, %lu ms", job.to.c_str(), ok ? "sent" : err.c_str(), millis() - t0);
+  }
+  const bool giveUp = !ok && (++job.tries >= 3 || err.startsWith("Login refused") || err.startsWith("no address"));
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  for (size_t k = 0; k < outbox.size(); k++) {
+    if (outbox[k].msgId != job.msgId) continue;
+    if (outbox[k].reaction == job.reaction) {  // not replaced by a newer reaction meanwhile
+      if (ok || giveUp) outbox.erase(outbox.begin() + k);
+      else { outbox[k].tries = job.tries; outbox[k].notBefore = millis() + 60000; }
+    }
+    break;
+  }
+  if (ok || giveUp) replyResults.push_back({ job.msgId, ok, giveUp, err });
+  xSemaphoreGive(mailLock);
+  xSemaphoreGive(networkOperationLock);
+}
+
+bool replyWaiting() {
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  bool any = false;
+  for (const ReplyJob &j : outbox) if ((int32_t)(millis() - j.notBefore) >= 0) any = true;
+  xSemaphoreGive(mailLock);
+  return any;
+}
+
 void mailTaskFn(void *) {
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(250));
     if (!WiFi.isConnected() || firmwareUpdater.active()) continue;
+    if (replyWaiting()) { replyNow = false; sendOneReply(); continue; }
     xSemaphoreTake(mailLock, portMAX_DELAY);
     const uint32_t pollSec = cfg.pollSec;
     xSemaphoreGive(mailLock);
@@ -499,7 +873,23 @@ void drainInbox() {
   got.swap(inbox);
   xSemaphoreGive(mailLock);
   for (const Incoming &m : got)
-    if (!runInstruction(m.subject)) addMessage(m.from, m.subject, m.body, m.picture.valid() ? &m.picture : nullptr);
+    if (!runInstruction(m.subject)) addMessage(m.from, m.subject, m.body, m.picture.valid() ? &m.picture : nullptr, &m.meta);
+}
+
+// Results of sent quick replies, from the mail task.
+void drainReplies() {
+  if (!mailLock) return;
+  std::vector<ReplyResult> got;
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  got.swap(replyResults);
+  xSemaphoreGive(mailLock);
+  for (const ReplyResult &r : got) {
+    int i = findMsg(r.msgId);
+    if (i < 0) continue;
+    storeSetReply(r.msgId, store[i].reaction, r.ok ? REPLY_SENT : REPLY_FAILED);
+    if (!r.ok) logf("Quick reply failed: %s", r.error.c_str());
+    if (ui == UI_CAROUSEL || (ui == UI_SENT && curId == r.msgId)) showUi();
+  }
 }
 
 // ---------------------------------------------------------------- Wi-Fi
@@ -559,12 +949,6 @@ void startAP(bool byUser) {
   }
   if (byUser) apByUser = true;
   setUi(UI_SETUP);
-}
-
-// Back to what the box was doing before setup.
-void resumeUi() {
-  if (firstNew() >= 0) enterEnvelope();
-  else setUi(UI_IDLE);
 }
 
 void stopAP() {
@@ -690,7 +1074,10 @@ void handleStatus() {
   j += ",\"allow\":\"" + jsonEsc(cfg.allowFrom) + "\",\"poll\":" + String(cfg.pollSec);
   j += ",\"tz\":\"" + jsonEsc(cfg.tz) + "\",\"name\":\"" + jsonEsc(cfg.name) + "\"";
   j += ",\"lstyle\":" + String(cfg.ledStyle) + ",\"col1\":\"" + colorHex(cfg.color1) + "\",\"col2\":\"" + colorHex(cfg.color2) + "\"";
-  j += ",\"lspeed\":" + String(cfg.ledSpeed) + ",\"ltail\":" + String(cfg.ledTail) + ",\"lmin\":" + String(cfg.ledMinutes);
+  j += ",\"lspeed\":" + String(cfg.ledSpeed) + ",\"ltail\":" + String(cfg.ledTail);
+  j += ",\"ledson\":" + jb(cfg.ledsOn) + ",\"spinsec\":" + String(cfg.spinSec) + ",\"spinevery\":" + String(cfg.spinEveryMin);
+  j += ",\"bed\":" + jb(cfg.bedtime) + ",\"bedfrom\":\"" + hhmm(cfg.bedFrom) + "\",\"bedto\":\"" + hhmm(cfg.bedTo) + "\"";
+  j += ",\"nicks\":\"" + jsonEsc(cfg.nicknames) + "\"";
   j += ",\"bright\":" + String(cfg.brightness);
   j += ",\"hknob\":" + jb(cfg.knobHaptics) + ",\"hpow\":" + String(cfg.tickPower) + ",\"hms\":" + String(cfg.tickMs);
   j += ",\"nvibe\":" + jb(cfg.notifyVibe) + ",\"nticks\":" + String(cfg.ntfTicks);
@@ -713,7 +1100,11 @@ void handleMessages() {
     const Message &m = store[i];
     if (j.length() > 1) j += ",";
     j += "{\"id\":" + String(m.id) + ",\"state\":\"" + (m.state == MSG_NEW ? "new" : "saved") + "\"";
-    j += ",\"from\":\"" + jsonEsc(m.from) + "\",\"subject\":\"" + jsonEsc(m.subject) + "\",\"when\":\"" + jsonEsc(m.when) + "\"";
+    j += ",\"from\":\"" + jsonEsc(senderName(m)) + "\",\"addr\":\"" + jsonEsc(m.meta.fromAddr) + "\"";
+    j += ",\"subject\":\"" + jsonEsc(m.subject) + "\",\"when\":\"" + jsonEsc(m.when) + "\"";
+    j += ",\"reaction\":\"" + String(m.reaction >= 0 && m.reaction < REACTION_COUNT ? REACTIONS[m.reaction].label : "") + "\"";
+    static const char *const RS[] = { "", "sending", "sent", "failed" };
+    j += ",\"reply\":\"" + String(RS[m.replyState & 3]) + "\"";
     j += ",\"body\":\"" + jsonEsc(m.body.substring(0, 160)) + "\"}";
   }
   j += "]";
@@ -824,7 +1215,28 @@ void handleSettings() {
     next.apPass = apPass;
   }
   readLookArgs(next);
-  next.ledMinutes = argNum("lmin", 0, 1440, next.ledMinutes);
+  next.ledsOn = argBool("ledson", next.ledsOn);
+  next.spinSec = argNum("spinsec", 0, 3600, next.spinSec);
+  next.spinEveryMin = argNum("spinevery", 0, 1440, next.spinEveryMin);
+  next.bedtime = argBool("bed", next.bedtime);
+  auto parseHhmm = [](const String &t, uint16_t def) -> uint16_t {
+    int c = t.indexOf(':');
+    if (c < 1) return def;
+    int h = t.substring(0, c).toInt(), m = t.substring(c + 1).toInt();
+    if (h < 0 || h > 23 || m < 0 || m > 59) return def;
+    return h * 60 + m;
+  };
+  if (server.hasArg("bedfrom")) next.bedFrom = parseHhmm(arg("bedfrom"), next.bedFrom);
+  if (server.hasArg("bedto")) next.bedTo = parseHhmm(arg("bedto"), next.bedTo);
+  if (server.hasArg("nicks")) {
+    String n = server.arg("nicks");
+    n.replace("\r", "");
+    if (n.length() > 1500) {
+      server.send(400, "text/plain", "Too many nicknames (keep it under 1500 characters).");
+      return;
+    }
+    next.nicknames = n;
+  }
   next.ntfRemindMin = argNum("nrem", 0, 1440, next.ntfRemindMin);
   next.rotation = argNum("rot", 0, 3, next.rotation);
   next.knobReverse = argBool("krev", next.knobReverse);
@@ -904,11 +1316,16 @@ void handleTest() {
     View v; v.scr = SCR_HAPPY;
     testScreen(v);
     sendText("Happy envelope (back to normal in 12 s)");
-  } else if (what == "decide") {
-    View v; v.scr = SCR_DECIDE; v.from = "Test"; v.title = "Thinking of you"; v.pos = 1; v.total = 2;
-    v.choice = argNum("choice", -1, 1, 0);
+  } else if (what == "react") {
+    View v; v.scr = SCR_REACT; v.from = "Test"; v.pos = 1; v.total = 2; v.reaction = 0;
     testScreen(v);
-    sendText("Keep or delete screen");
+    sendText("Quick reply screen");
+  } else if (what == "arrive") {
+    if (ui == UI_IDLE || ui == UI_ENVELOPE || ui == UI_NOMSG || ui == UI_CAROUSEL || ui == UI_HAPPY) startArrival();
+    sendText("The hummingbird (then back to normal)");
+  } else if (what == "nomsg") {
+    if (firstNew() < 0 && (ui == UI_IDLE || ui == UI_NOMSG || ui == UI_CAROUSEL)) enterNoMsg();
+    sendText("No new messages screen");
   } else if (what == "epd") {
     View v; v.scr = SCR_TEXT; v.text = foldToAscii(server.arg("text"));
     testScreen(v);
@@ -942,14 +1359,18 @@ void setupWeb() {
   server.on("/api/message", HTTP_POST, [] {
     String from = foldToAscii(server.arg("from")), sub = foldToAscii(server.arg("subject")), body = foldToAscii(server.arg("body"));
     if (runInstruction(sub)) { sendText("Ran it as an instruction"); return; }
-    addMessage(from.length() ? from : String("Test"), sub, body);
+    MsgMeta meta;
+    meta.fromAddr = arg("addr");  // optional: lets you try a quick reply to yourself
+    meta.rawSubject = server.arg("subject");
+    addMessage(from.length() ? from : String("Test"), sub, body, nullptr, &meta);
     sendText(ui == UI_SETUP ? "Saved as new. The envelope shows when you leave setup mode." : "Sent: watch the box");
   });
   server.on("/api/msgdel", HTTP_POST, [] {
     if (server.arg("id") == "all") storeClear();
     else storeDelete(strtoul(server.arg("id").c_str(), nullptr, 10));
-    if (ui == UI_READ || ui == UI_DECIDE) { if (findMsg(curId) < 0) resumeUi(); }
+    if (ui == UI_READ || ui == UI_REACT || ui == UI_SENT) { if (findMsg(curId) < 0) resumeUi(); }
     else if (ui == UI_ENVELOPE) { if (firstNew() < 0) goIdle(false); else showUi(); }
+    else if (ui == UI_CAROUSEL) { if (countState(MSG_SAVED) == 0) resumeUi(); else showUi(); }
     sendText("Deleted");
   });
   server.on("/api/checkmail", HTTP_POST, [] {
@@ -994,6 +1415,10 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.printf("\n%s starting, reset reason %d\n", FIRMWARE_VERSION, (int)esp_reset_reason());
+  // waking from "Shut down": let go of the pin that kept the motor off
+  gpio_hold_dis((gpio_num_t)PIN_VIBE);
+  gpio_deep_sleep_hold_dis();
+  const bool wokeByKnob = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO;
   logLock = xSemaphoreCreateMutex();
   mailLock = xSemaphoreCreateMutex();
   networkOperationLock = xSemaphoreCreateMutex();
@@ -1028,6 +1453,10 @@ void setup() {
   hapticsBegin();
   ledsBegin();
   storeLoad();
+  for (const Message &m : store)  // quick replies that hadn't gone before a restart
+    if (m.replyState == REPLY_PENDING && m.reaction >= 0) queueReply(m);
+  notifyAt = lastRemind = millis();
+  if (wokeByKnob) logf("Woken by the knob");
   screenBegin();
   if (apOn) {
     showUi();
@@ -1049,26 +1478,56 @@ void loop() {
   hapticsLoop();
   ledsLoop();
   drainInbox();
+  drainReplies();
   confirmFirmware();
 
   uint32_t now = millis();
   switch (ui) {
     case UI_ENVELOPE:
-      if (cfg.ledMinutes && ringMode == RING_NOTIFY && now - notifyAt > cfg.ledMinutes * 60000UL) ringSet(RING_OFF);
+      // a message is waiting: the ring spins for a minute every ten (settings), not at bedtime
+      if (!overrideUntil) ringSet(envelopeSpinning(now) ? RING_NOTIFY : RING_OFF);
       if (cfg.ntfRemindMin && now - lastRemind > cfg.ntfRemindMin * 60000UL) {
-        lastRemind = notifyAt = now;
-        hapticNotifyFromSettings();
-        ringSet(RING_NOTIFY);
+        lastRemind = now;
+        notifyBuzz();
       }
       break;
+    case UI_ARRIVE: {
+      // the next animation frame once the panel has shown this one
+      const bool shown = refreshCount != arriveRefreshes || now - arriveShownAt > 2500;
+      if (arriveFrame >= ARRIVE_FRAMES - 1) {
+        if (shown && now - arriveShownAt > 1500) enterEnvelope();
+      } else if (shown && now - arriveShownAt > 150) {
+        arriveFrame++;
+        showArriveFrame();
+      }
+      break;
+    }
     case UI_READ:
-    case UI_DECIDE:
+    case UI_REACT:
       if (now - lastInput > READ_TIMEOUT_MS) {  // walked away: back to the envelope, or off
         logf("No knob use for a while");
-        choice = 0;
         if (firstNew() >= 0) enterEnvelope();
         else goIdle(true);
       }
+      break;
+    case UI_SENT:
+      if (now - sentAt > 2200) exitMessage();
+      break;
+    case UI_NOMSG:
+      if (now - lastInput > NOMSG_TIMEOUT_MS) goIdle(false);
+      break;
+    case UI_CAROUSEL:
+      if (now - lastInput > CAROUSEL_TIMEOUT_MS) resumeUi();
+      break;
+    case UI_MENU:
+      if (now - lastInput > MENU_TIMEOUT_MS) {
+        menuEditing = false;
+        saveSettings();
+        resumeUi();
+      }
+      break;
+    case UI_SLEEP:
+      if ((refreshCount != sleepRefreshes && now - sleepAt > 2500 && !hapticsBusy()) || now - sleepAt > 10000) goToSleep();
       break;
     case UI_HAPPY:
       if (now - happyAt > 3000) goIdle(true);  // shut down: brrr, ring out, screen blank

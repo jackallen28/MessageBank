@@ -17,15 +17,20 @@ const int PIN_LEDS = 2;       // ring DIN
 const int PIN_VIBE = 20;      // motor module IN
 
 const int NUM_LEDS = 12;
-const char *const FIRMWARE_VERSION = "MessageBox-main-v13";
+const char *const FIRMWARE_VERSION = "MessageBox-main-v14";
 const char *const AP_SSID = "MessageBox-Setup";
-const uint32_t LONG_PRESS_MS = 5000;  // hold the knob this long for the setup Wi-Fi
+const uint32_t MENU_HOLD_MS = 20000;   // hold the knob this long for the settings screen
+const uint32_t DELETE_HOLD_MS = 2000;  // while reading: hold this long to delete the message
 const uint32_t READ_TIMEOUT_MS = 180000;  // reading with no knob use for 3 min: back to the envelope
+const uint32_t CAROUSEL_TIMEOUT_MS = 45000;
+const uint32_t NOMSG_TIMEOUT_MS = 8000;
+const uint32_t MENU_TIMEOUT_MS = 60000;
 const int SCROLL_LINES_PER_CLICK = 2;
 const int MAX_MSGS = 40;
 
 // Arduino generates sketch prototypes before .ino-local type declarations.
-enum Ui : uint8_t { UI_IDLE, UI_ENVELOPE, UI_READ, UI_DECIDE, UI_HAPPY, UI_SETUP };
+enum Ui : uint8_t { UI_IDLE, UI_ENVELOPE, UI_READ, UI_REACT, UI_HAPPY, UI_SETUP, UI_ARRIVE, UI_NOMSG,
+               UI_CAROUSEL, UI_SENT, UI_MENU, UI_SLEEP };
 
 // ---------------------------------------------------------------- settings
 
@@ -44,7 +49,9 @@ struct Settings {
   uint32_t color1 = 0xFF2060, color2 = 0x6020FF;
   uint16_t ledSpeed = 1200;    // ms for one trip round the ring
   uint8_t ledTail = 5;         // comet tail, in LEDs
-  uint16_t ledMinutes = 0;     // stop the lights after this long (0 = until read)
+  bool ledsOn = true;          // the ring at all (the knob's hold and delete feedback still show)
+  uint16_t spinSec = 60;       // while a message waits, spin this long...
+  uint16_t spinEveryMin = 10;  // ...every this many minutes (0 = spin all the time)
   uint8_t brightness = 60;     // 0-255; 12 LEDs at 255 white draw ~0.7 A
   // knob haptics
   bool knobHaptics = true;
@@ -62,6 +69,11 @@ struct Settings {
   bool knobReverse = false;
   bool epdWired = true;        // screen BUSY (GPIO4) and RESET (GPIO8) connected: the tested setup
   uint8_t epdSpiMHz = 1;       // screen SPI clock: 1 (tested), 4 or 10 MHz
+  // bedtime: no lights or buzz for new messages between these times (minutes after midnight)
+  bool bedtime = false;
+  uint16_t bedFrom = 22 * 60, bedTo = 7 * 60;
+  // nicknames: one "address=Name" per line
+  String nicknames;
 } cfg;
 
 Preferences prefs;
@@ -106,7 +118,13 @@ void loadSettings() {
   cfg.color2 = prefs.getUInt("col2", cfg.color2);
   cfg.ledSpeed = prefs.getUShort("lspeed", cfg.ledSpeed);
   cfg.ledTail = prefs.getUChar("ltail", cfg.ledTail);
-  cfg.ledMinutes = prefs.getUShort("lmin", cfg.ledMinutes);
+  cfg.ledsOn = prefs.getBool("ledson", cfg.ledsOn);
+  cfg.spinSec = prefs.getUShort("spinsec", cfg.spinSec);
+  cfg.spinEveryMin = prefs.getUShort("spinevery", cfg.spinEveryMin);
+  cfg.bedtime = prefs.getBool("bed", cfg.bedtime);
+  cfg.bedFrom = prefs.getUShort("bedfrom", cfg.bedFrom) % 1440;
+  cfg.bedTo = prefs.getUShort("bedto", cfg.bedTo) % 1440;
+  cfg.nicknames = prefs.getString("nicks", cfg.nicknames);
   cfg.brightness = prefs.getUChar("bright", cfg.brightness);
   cfg.knobHaptics = prefs.getBool("hknob", cfg.knobHaptics);
   cfg.tickPower = prefs.getUChar("hpow", cfg.tickPower);
@@ -146,7 +164,13 @@ void saveSettings() {
   prefs.putUInt("col2", cfg.color2);
   prefs.putUShort("lspeed", cfg.ledSpeed);
   prefs.putUChar("ltail", cfg.ledTail);
-  prefs.putUShort("lmin", cfg.ledMinutes);
+  prefs.putBool("ledson", cfg.ledsOn);
+  prefs.putUShort("spinsec", cfg.spinSec);
+  prefs.putUShort("spinevery", cfg.spinEveryMin);
+  prefs.putBool("bed", cfg.bedtime);
+  prefs.putUShort("bedfrom", cfg.bedFrom);
+  prefs.putUShort("bedto", cfg.bedTo);
+  prefs.putString("nicks", cfg.nicknames);
   prefs.putUChar("bright", cfg.brightness);
   prefs.putBool("hknob", cfg.knobHaptics);
   prefs.putUChar("hpow", cfg.tickPower);
@@ -164,6 +188,38 @@ void saveSettings() {
   prefs.putBool("epdwire", cfg.epdWired);
   prefs.putUChar("epdspi", cfg.epdSpiMHz);
   prefs.end();
+}
+
+// The name to show for a sender: their nickname if one is set for the address, else the name
+// from their email.
+String displayName(const String &addr, const String &fallback) {
+  if (addr.length()) {
+    String a = addr;
+    a.toLowerCase();
+    int p = 0;
+    const String &n = cfg.nicknames;
+    while (p < (int)n.length()) {
+      int e = n.indexOf('\n', p);
+      if (e < 0) e = n.length();
+      String line = n.substring(p, e);
+      p = e + 1;
+      int eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      String k = line.substring(0, eq), v = line.substring(eq + 1);
+      k.trim();
+      k.toLowerCase();
+      v.trim();
+      if (k == a && v.length()) return v;
+    }
+  }
+  return fallback.length() ? fallback : addr;
+}
+
+// "HH:MM" for minutes after midnight.
+String hhmm(uint16_t m) {
+  char b[8];
+  snprintf(b, sizeof(b), "%02u:%02u", (unsigned)(m / 60) % 24, (unsigned)(m % 60));
+  return b;
 }
 
 // ---------------------------------------------------------------- log (Serial + web page), any task

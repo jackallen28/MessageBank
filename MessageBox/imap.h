@@ -5,6 +5,7 @@
 #include <WiFiClientSecure.h>
 #include <memory>
 #include <new>
+#include <vector>
 #include "certs.h"
 #include "MailImage.h"
 #include "MailStructure.h"
@@ -334,7 +335,37 @@ struct MailItem {
   uint32_t uid;
   String fromName, fromAddr, subject, body;
   MailImage picture;
+  // for a threaded reply: the mail's Message-ID, its References, Reply-To and the subject as sent
+  String msgId, refs, replyTo, rawSubject;
 };
+
+// "<a@b>" from a Message-ID header (anything else, or garbage, gives "").
+static String messageIdToken(const String &v) {
+  int lt = v.indexOf('<'), gt = v.indexOf('>', lt + 1);
+  if (lt < 0 || gt <= lt + 1 || gt - lt > 250) return "";
+  return v.substring(lt, gt + 1);
+}
+
+// The References chain, kept short: the first id (the thread's root) and the last few.
+static String trimReferences(const String &v) {
+  std::vector<String> ids;
+  int p = 0;
+  while (true) {
+    int lt = v.indexOf('<', p);
+    if (lt < 0) break;
+    int gt = v.indexOf('>', lt + 1);
+    if (gt < 0) break;
+    if (gt - lt < 250) ids.push_back(v.substring(lt, gt + 1));
+    p = gt + 1;
+  }
+  String out;
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (i != 0 && i + 6 < ids.size()) continue;  // root + the last 6
+    if (out.length()) out += ' ';
+    out += ids[i];
+  }
+  return out;
+}
 
 class GmailImap {
  public:
@@ -424,14 +455,24 @@ class GmailImap {
     // headers
     {
       String hdr;
-      if (!command(request + " (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])", nullptr, &hdr)) {
+      if (!command(request + " (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID REFERENCES IN-REPLY-TO REPLY-TO)])", nullptr, &hdr)) {
         error = "FETCH header failed: " + error;
         return false;
       }
       hdr.replace("\r\n ", " ");  // unfold long header lines
       hdr.replace("\r\n\t", " ");
-      m.subject = foldToAscii(decodeHeaderWords(headerValue(hdr, "subject")));
+      m.rawSubject = decodeHeaderWords(headerValue(hdr, "subject"));
+      m.rawSubject.trim();
+      if (m.rawSubject.length() > 300) m.rawSubject = m.rawSubject.substring(0, 300);
+      m.subject = foldToAscii(m.rawSubject);
       m.subject.trim();
+      m.msgId = messageIdToken(headerValue(hdr, "message-id"));
+      String refs = headerValue(hdr, "references");
+      if (!refs.length()) refs = headerValue(hdr, "in-reply-to");
+      m.refs = trimReferences(refs);
+      String rtName;
+      const String rt = headerValue(hdr, "reply-to");
+      if (rt.length()) splitFrom(decodeHeaderWords(rt), rtName, m.replyTo);
       splitFrom(decodeHeaderWords(headerValue(hdr, "from")), m.fromName, m.fromAddr);
       m.fromName = foldToAscii(m.fromName);
     }

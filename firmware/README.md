@@ -1,10 +1,24 @@
-# MessageBox firmware v13
+# MessageBox firmware v14
 
-**v13** is v12 plus fixes for unreliable screen updates (freezing, or not refreshing):
-the screen is re-initialised after each fast refresh the way the library does it (as in v10),
-recovery gives up after 3 resets instead of waiting forever, and Wi-Fi modem sleep is back on
-so the 3.3 V supply stays steadier during refreshes.
+**v14** adds the new knob flow, quick replies and the settings screen (v13's screen fixes
+included):
 
+- **A hummingbird** flies in and pecks the envelope open when a message arrives. The screen then
+  stays on the envelope with the count, and the ring spins for 1 minute every 10 minutes until
+  it's read (*Lights* settings).
+- **Reading:** press when done (the message is kept), hold 2 s to delete. Turning on past the end
+  opens **quick replies**: six reactions (the Jack-in-a-Box hand-drawn symbols), sent as an
+  email reply in the same thread.
+- **Press with nothing new:** "No new messages", a happy envelope and a light show; turn for the
+  **saved messages** as cards (open envelope, sender or nickname, dd/mm/yy).
+- **Hold 20 s:** settings on the box: lights, buzz, bedtime (quiet time), change Wi-Fi, shut down
+  (turn the knob to wake). This replaces the old 5 s hold for the setup Wi-Fi.
+- **Web page:** nicknames by email address, bedtime, lights on/off and the spin schedule. *Send
+  to the box* takes a reply address so you can try a quick reply to yourself.
+
+The message store moves to a new format that keeps each mail's reply details. v14 reads
+messages saved by older firmware, but older firmware can't read v14's, so going back to v13
+would empty the box.
 
 v12 fixes an OTA download bug that could report a valid update as a merged USB image when the
 start of the file arrived in separate TLS records. It includes v11's Wi-Fi and display fixes
@@ -12,9 +26,9 @@ and emailed pictures. The source is in [`../MessageBox/`](../MessageBox/).
 
 | File | Use |
 |---|---|
-| `MessageBox-main-v13-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
-| `MessageBox-main-v13-USB-recovery.bin` | USB recovery flashed at **0xe000** on the standard MessageBox OTA layout. **Keeps settings and messages.** |
-| `MessageBox-main-v13-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
+| `MessageBox-main-v14-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
+| `MessageBox-main-v14-USB-recovery.bin` | USB recovery flashed at **0xe000** on the standard MessageBox OTA layout. **Keeps settings and messages.** |
+| `MessageBox-main-v14-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
 | `SHA256SUMS.txt` | Checksums of the firmware images |
 
 Built with Arduino CLI 1.6, Arduino-ESP32 **3.3.7**, GxEPD2 1.6.9, Adafruit GFX 1.13.0, BusIO 1.17.4
@@ -28,7 +42,7 @@ device page's **Firmware update** and select **Install and restart**. After it r
 leave it running for at least 30 seconds.
 
 ```text
-https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v13-OTA.bin
+https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v14-OTA.bin
 ```
 
 ### USB recovery for an existing MessageBox
@@ -40,15 +54,15 @@ settings, saved messages, and pictures.
 
 1. Open the [Espressif browser flasher](https://espressif.github.io/esptool-js/) in Chrome or Edge and press **Connect**.
 2. Use one file row and set its flash address to **`0xe000`**. Leave flash mode, frequency, and size on **keep**.
-3. Select `MessageBox-main-v13-USB-recovery.bin` and press **Program** with **Erase all** unchecked.
-4. Press RESET and check that the device status shows `MessageBox-main-v13`.
+3. Select `MessageBox-main-v14-USB-recovery.bin` and press **Program** with **Erase all** unchecked.
+4. Press RESET and check that the device status shows `MessageBox-main-v14`.
 
 ### Fresh USB install (erases settings and messages)
 
 1. Open https://espressif.github.io/esptool-js/ in Chrome or Edge and press **Connect**.
    If no port appears, hold BOOT while plugging in.
 2. Use the flash settings **DIO, 40 MHz, 4 MB**.
-3. Set the address to **0x0**, choose `MessageBox-main-v13-USB-installer.bin` and press **Program**.
+3. Set the address to **0x0**, choose `MessageBox-main-v14-USB-installer.bin` and press **Program**.
 4. Press RESET.
 
 If the flasher can't get into download mode with the screen connected, unplug the screen's RES
@@ -133,17 +147,26 @@ Once it works without them, GPIO4 and GPIO8 are free too.
 ## Test checklist
 
 - [ ] **First boot:** join `MessageBox-Setup` and open 192.168.4.1. The status shows
-      `MessageBox-main-v13`.
+      `MessageBox-main-v14`.
 - [ ] **Hardware tests:**
   - [ ] *Test each LED* (12 × red, green, blue)
   - [ ] the ticks and the new-message buzz
   - [ ] the screen test pattern (full refresh)
-  - [ ] the envelope and keep-or-delete screens (fast refresh)
+  - [ ] *Hummingbird*, *Envelope*, *Quick replies* and *No new messages* (fast refresh)
 - [ ] **Knob:** turn it quickly. The position on the page should move one step per click, with
       no skips. One tick per click.
-- [ ] **Send to the box:** the envelope, then press, scroll, press, choose, press, then "All
-      read!", then blank. Count the full (flashing) refreshes on the status line. There should
-      be one, for the blank at the end.
+- [ ] **Send to the box** (put your own email in *Reply address*): the hummingbird, the
+      envelope with "1"; press, scroll, keep turning to the reactions, pick one and press. "Sent
+      to ..." shows, and the reply arrives in your inbox as "Re: Thinking of you" (a pretend
+      message has no email thread to join, so it starts a new one).
+- [ ] **Delete:** open a message and hold the knob 2 s (the ring fills red).
+- [ ] **No new messages:** press while blank: the happy envelope and the light show. Turn: the
+      saved cards; press to open one, press again to come back.
+- [ ] **Settings:** hold the knob 20 s. Toggle Lights and Buzz, set Bedtime, try Shut down and
+      wake it by turning the knob.
+- [ ] **Nicknames:** add one on the web page for a sender; their cards and messages use it.
+- [ ] **A real thread:** from your own email, send the box a message, react to it on the box, and
+      check the reply sits under your message in the same conversation.
 - [ ] **Home Wi-Fi and Gmail:** send an email to the box's address and check it arrives within a
       minute.
 - [ ] **Wi-Fi recovery:** turn the router off and back on. The box rejoins the saved network and

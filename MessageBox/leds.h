@@ -13,6 +13,7 @@ enum RingMode : uint8_t {
   RING_DIM,        // soft glow of colour 1 (reading)
   RING_POWERDOWN,  // LEDs go out one by one, anticlockwise
   RING_CHASE_TEST, // each LED red, green, blue in turn
+  RING_PARTY,      // "no new messages": confetti sparkles in every colour, then a rainbow swirl
 };
 
 struct RingLook {
@@ -27,7 +28,8 @@ uint32_t ringColor = 0;
 RingLook ringLook;
 uint32_t ringStart = 0;
 // overlays
-float holdFill = -1;          // 0..1 while the knob is held down (setup in 5 s), <0 = none
+float holdFill = -1;          // 0..1 while the knob is held down (settings, or delete while reading), <0 = none
+uint32_t holdColor = 0xFFFFFF;
 int8_t choiceGlow = 0;        // -1 delete (ring pulses red), +1 keep/save (blue), 0 none
 uint32_t overrideUntil = 0;   // a web-page test owns the ring until then
 RingMode savedMode;
@@ -166,6 +168,22 @@ void ledsLoop() {
       if (lit <= 0) ringMode = RING_OFF;
       break;
     }
+    case RING_PARTY: {  // 3.5 s: random sparkles that fade, then a rainbow swirl that winds down
+      static float level[NUM_LEDS];
+      static uint32_t hue[NUM_LEDS];
+      if (t < 40) for (int i = 0; i < NUM_LEDS; i++) level[i] = 0;
+      if (t < 2200) {
+        for (int i = 0; i < NUM_LEDS; i++) level[i] *= 0.86f;
+        if (random(100) < 45) { int i = random(NUM_LEDS); level[i] = 1; hue[i] = random(65536); }
+        for (int i = 0; i < NUM_LEDS; i++)
+          ring.setPixelColor(i, level[i] > 0.02f ? mix(ring.gamma32(ring.ColorHSV(hue[i])), level[i]) : 0);
+      } else if (t < 3500) {
+        float k = 1.0f - (t - 2200) / 1300.0f;
+        for (int i = 0; i < NUM_LEDS; i++)
+          ring.setPixelColor(i, mix(ring.gamma32(ring.ColorHSV((uint16_t)(t * 60 + i * 65536 / NUM_LEDS))), k));
+      } else ringMode = RING_OFF;
+      break;
+    }
     case RING_CHASE_TEST: {
       int step = t / 250;
       static const uint32_t c[3] = { 0xFF0000, 0x00FF00, 0x0000FF };
@@ -173,6 +191,8 @@ void ledsLoop() {
       break;
     }
   }
+  // lights switched off (settings screen or web page): only the knob's feedback below shows
+  if (!cfg.ledsOn && !overrideUntil) ring.clear();
   // the decision: pulsing red for delete, blue for keep (save)
   if (choiceGlow) {
     ring.clear();
@@ -180,11 +200,11 @@ void ledsLoop() {
     float k = 0.55f + 0.45f * sinf(millis() / 160.0f);
     for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, mix(c, k));
   }
-  // holding the knob: the ring fills up, then the setup Wi-Fi opens
+  // holding the knob: the ring fills up (white: settings; red: delete this message)
   if (holdFill >= 0) {
     ring.clear();
     int n = holdFill * NUM_LEDS + 0.5f;
-    for (int i = 0; i < n && i < NUM_LEDS; i++) ring.setPixelColor(i, mix(0xFFFFFF, 0.6f));
+    for (int i = 0; i < n && i < NUM_LEDS; i++) ring.setPixelColor(i, mix(holdColor, 0.6f));
   }
   // don't keep sending frames once the ring is dark
   bool dark = true;

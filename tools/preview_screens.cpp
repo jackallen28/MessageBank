@@ -49,6 +49,26 @@ int main(int argc, char **argv) {
 
     View h; h.scr = SCR_HAPPY;
     drawView(h); save(dir, ("8_happy" + sfx).c_str());
-  }
-  return 0;
+
+    for (int f = 0; f < ARRIVE_FRAMES; f++) {
+      View a; a.scr = SCR_ARRIVE; a.frame = f;
+      drawView(a); save(dir, ("a" + String(f) + "_arrive" + sfx).c_str());
+    }
+    View n; n.scr = SCR_NOMSG; n.savedCount = 4;
+    drawView(n); save(dir, ("b_nomsg" + sfx).c_str());
+    View c; c.scr = SCR_CAROUSEL; c.from = "Alex"; c.when = "27/11/26"; c.title = "Thinking of you"; c.pos = 2; c.total = 4; c.sentReaction = 0;
+    drawView(c); save(dir, ("c_carousel" + sfx).c_str());
+    View rr; rr.scr = SCR_REACT; rr.from = "Alex"; rr.pos = 1; rr.total = 3; rr.reaction = 1; rr.sentReaction = 0;
+    drawView(rr); save(dir, ("d_react" + sfx).c_str());
+    View se; se.scr = SCR_SENT; se.from = "Alex"; se.reaction = 0; se.replyQueued = true;
+    drawView(se); save(dir, ("e_sent" + sfx).c_str());
+    View m; m.scr = SCR_MENU; m.menuSel = 3; m.menuEditing = true;
+    m.menu = { {"Lights", "On"}, {"Buzz", "On"}, {"Bedtime", "On"}, {"Quiet from", "22:00"}, {"Quiet until", "07:00"},
+               {"Change Wi-Fi", ""}, {"Shut down", ""}, {"Exit", ""} };
+    drawView(m); save(dir, ("f_menu" + sfx).c_str());
+    View sl; sl.scr = SCR_SLEEP;
+    drawView(sl); save(dir, ("g_sleep" + sfx).c_str());
+    View en; en.scr = SCR_ENVELOPE; en.count = 2;
+    drawView(en); save(dir, ("1_envelope" + sfx).c_str());
+  }  return 0;
 }

@@ -1,3 +1,4 @@
+#include <cmath>
 // A small stand-in for Adafruit GFX that draws into memory, for previewing screens on a PC.
 #pragma once
 #include "Arduino.h"
@@ -26,6 +27,7 @@ class FakeGFX {
     int n = std::max(std::abs(x1 - x0), std::abs(y1 - y0));
     for (int i = 0; i <= n; i++) drawPixel(x0 + (x1 - x0) * i / std::max(1, n), y0 + (y1 - y0) * i / std::max(1, n), c);
   }
+  void drawCircle(int x0, int y0, int r, uint16_t c) { for (int a = 0; a < 720; a++) { double t = a * 3.14159265 / 360; drawPixel(x0 + (int)lround(r * cos(t)), y0 + (int)lround(r * sin(t)), c); } }
   void fillCircle(int x0, int y0, int r, uint16_t c) { for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++) if (x * x + y * y <= r * r) drawPixel(x0 + x, y0 + y, c); }
   bool inRound(int x, int y, int w, int h, int r, int i, int j) {
     int dx = i < x + r ? x + r - i : (i >= x + w - r ? i - (x + w - r - 1) : 0);

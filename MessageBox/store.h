@@ -8,11 +8,22 @@
 
 enum MsgState : uint8_t { MSG_NEW = 0, MSG_SAVED = 1 };
 
+enum ReplyState : uint8_t { REPLY_NONE = 0, REPLY_PENDING = 1, REPLY_SENT = 2, REPLY_FAILED = 3 };
+
+// What a threaded reply needs, from the mail's headers.
+struct MsgMeta {
+  String fromAddr, replyTo, msgId, refs, rawSubject;
+};
+
 struct Message {
   uint32_t id;
   uint8_t state;
   String from, subject, body, when;
   bool hasPicture = false;
+  MsgMeta meta;
+  uint32_t ts = 0;           // arrival time (seconds since 1970), 0 if the clock wasn't set
+  int8_t reaction = -1;      // the quick reply sent (index into REACTIONS), -1 none
+  uint8_t replyState = REPLY_NONE;
 };
 
 std::vector<Message> store;  // oldest first
@@ -76,12 +87,15 @@ bool storeSave() {
   if (!fsOk) return false;
   File f = LittleFS.open("/msgs.tmp", "w");
   if (!f) { logf("Store: can't write"); return false; }
-  bool written = f.printf("MB1\x1f%lu\x1e", (unsigned long)nextMsgId) > 0;
+  // MB2: id, state, from, subject, when, fromAddr, replyTo, msgId, refs, rawSubject, ts, reaction,
+  // replyState, body (body last). MB1 (older firmware) had id, state, from, subject, when, body.
+  bool written = f.printf("MB2\x1f%lu\x1e", (unsigned long)nextMsgId) > 0;
+  auto field = [&f](const String &v) { return f.print(v) == v.length() && f.write(0x1F) == 1; };
   for (const Message &m : store) {
     written = written && f.printf("%lu\x1f%u\x1f", (unsigned long)m.id, m.state) > 0 &&
-        f.print(m.from) == m.from.length() && f.write(0x1F) == 1 &&
-        f.print(m.subject) == m.subject.length() && f.write(0x1F) == 1 &&
-        f.print(m.when) == m.when.length() && f.write(0x1F) == 1 &&
+        field(m.from) && field(m.subject) && field(m.when) && field(m.meta.fromAddr) && field(m.meta.replyTo) &&
+        field(m.meta.msgId) && field(m.meta.refs) && field(m.meta.rawSubject) &&
+        f.printf("%lu\x1f%d\x1f%u\x1f", (unsigned long)m.ts, (int)m.reaction, m.replyState) > 0 &&
         f.print(m.body) == m.body.length() && f.write(0x1E) == 1;
   }
   f.close();
@@ -98,20 +112,29 @@ void storeLoad() {
   File f = LittleFS.open("/msgs.dat", "r");
   if (!f) { prunePictures(); return; }
   String head = f.readStringUntil(0x1E);
-  if (!head.startsWith("MB1\x1f")) { f.close(); return; }
+  const bool v2 = head.startsWith("MB2\x1f");
+  if (!v2 && !head.startsWith("MB1\x1f")) { f.close(); return; }
   nextMsgId = strtoul(head.c_str() + 4, nullptr, 10);
+  const int fields = v2 ? 14 : 6;
   while (f.available() && (int)store.size() < MAX_MSGS) {
     String rec = f.readStringUntil(0x1E);
-    String part[6];
+    String part[14];
     int p = 0, start = 0;
-    for (int i = 0; i <= (int)rec.length() && p < 6; i++) {
-      if (i == (int)rec.length() || (rec[i] == 0x1F && p < 5)) {
+    for (int i = 0; i <= (int)rec.length() && p < fields; i++) {
+      if (i == (int)rec.length() || (rec[i] == 0x1F && p < fields - 1)) {
         part[p++] = rec.substring(start, i);
         start = i + 1;
       }
     }
-    if (p < 6) continue;
-    Message m{ (uint32_t)strtoul(part[0].c_str(), nullptr, 10), (uint8_t)part[1].toInt(), part[2], part[3], part[5], part[4] };
+    if (p < fields) continue;
+    Message m{ (uint32_t)strtoul(part[0].c_str(), nullptr, 10), (uint8_t)part[1].toInt(), part[2], part[3],
+               part[fields - 1], part[4] };
+    if (v2) {
+      m.meta = { part[5], part[6], part[7], part[8], part[9] };
+      m.ts = strtoul(part[10].c_str(), nullptr, 10);
+      m.reaction = constrain((int)part[11].toInt(), -1, 127);
+      m.replyState = part[12].toInt();
+    }
     m.hasPicture = LittleFS.exists(picturePath(m.id));
     store.push_back(m);
     if (m.id >= nextMsgId) nextMsgId = m.id + 1;
@@ -133,7 +156,7 @@ int findMsg(uint32_t id) {
 }
 
 uint32_t storeAdd(const String &from, const String &subject, const String &body, const String &when,
-                  const MailImage *picture = nullptr) {
+                  const MailImage *picture = nullptr, const MsgMeta *meta = nullptr, uint32_t ts = 0) {
   uint32_t obsoletePicture = 0;
   if ((int)store.size() >= MAX_MSGS) {  // full: drop the oldest saved one, else the oldest of all
     int drop = 0;
@@ -143,6 +166,8 @@ uint32_t storeAdd(const String &from, const String &subject, const String &body,
     store.erase(store.begin() + drop);
   }
   Message m{ nextMsgId++, MSG_NEW, from, subject, body, when };
+  if (meta) m.meta = *meta;
+  m.ts = ts;
   if (picture) {
     m.hasPicture = storeSavePicture(m.id, *picture);
     if (!m.hasPicture) logf("Store: could not save the picture");
@@ -164,6 +189,14 @@ void storeSetState(uint32_t id, uint8_t s) {
   int i = findMsg(id);
   if (i < 0) return;
   store[i].state = s;
+  storeSave();
+}
+
+void storeSetReply(uint32_t id, int8_t reaction, uint8_t replyState) {
+  int i = findMsg(id);
+  if (i < 0) return;
+  store[i].reaction = reaction;
+  store[i].replyState = replyState;
   storeSave();
 }
 

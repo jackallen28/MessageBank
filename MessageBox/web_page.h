@@ -69,8 +69,10 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 <div><label>Brightness (5-255)</label><input id="bright" class="s" type="number" min="5" max="255"></div></div>
 <div class="row"><div><label>Colour 1</label><input id="col1" class="s" type="color"></div><div><label>Colour 2</label><input id="col2" class="s" type="color"></div></div>
 <div class="row3"><div><label>One lap (ms, lower = faster)</label><input id="lspeed" class="s" type="number" min="200" max="10000"></div>
-<div><label>Tail length (LEDs)</label><input id="ltail" class="s" type="number" min="1" max="12"></div>
-<div><label>Stop after (min, 0 = until read)</label><input id="lmin" class="s" type="number" min="0" max="1440"></div></div>
+<div><label>Tail length (LEDs)</label><input id="ltail" class="s" type="number" min="1" max="12"></div><div></div></div>
+<label class="ck"><input id="ledson" class="s" type="checkbox"> Lights on (also on the box's settings screen)</label>
+<div class="row"><div><label>While a message waits, spin for (seconds)</label><input id="spinsec" class="s" type="number" min="0" max="3600"></div>
+<div><label>...every (minutes, 0 = all the time)</label><input id="spinevery" class="s" type="number" min="0" max="1440"></div></div>
 <button onclick="test('lights')">Try these lights</button>
 <div class="hint">Keep brightness around 60: all 12 LEDs at full white draw about 0.7 A from USB.</div>
 </section>
@@ -93,7 +95,22 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 <div class="hint">Each tick is a bit longer and stronger than the one before, so the last one stands out.</div>
 </section>
 
-<section><h2>5. Screen and knob</h2>
+<section><h2>5. Bedtime</h2>
+<label class="ck"><input id="bed" class="s" type="checkbox"> Quiet time: no lights or buzz for new messages</label>
+<div class="row"><div><label>From</label><input id="bedfrom" class="s" type="time" step="1800"></div>
+<div><label>Until</label><input id="bedto" class="s" type="time" step="1800"></div></div>
+<div class="hint">Messages still arrive and show on the screen. The box needs the internet time for this, so it starts working once it's online. You can also change it on the box: hold the knob for 20 seconds.</div>
+</section>
+
+<section><h2>6. Nicknames</h2>
+<div class="hint" style="margin-top:0">Show a name of your choice instead of the one in the email, on the envelope cards and while reading.</div>
+<div id="nickrows"></div>
+<input id="nicks" class="s" type="hidden">
+<button onclick="addNick('','')">Add a nickname</button>
+<div id="nicksugg" class="hint"></div>
+</section>
+
+<section><h2>7. Screen and knob</h2>
 <div class="row"><div><label>Screen orientation</label><select id="rot" class="s"><option value="0">Portrait</option><option value="1">Landscape</option><option value="2">Portrait, flipped</option><option value="3">Landscape, flipped</option></select></div>
 </div>
 <div class="hint">Fast updates while reading. Full refreshes happen at startup, when clearing the screen, and for setup, orientation changes or a requested full redraw. There is no refresh-count timer.</div>
@@ -114,14 +131,15 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 <section><h2>Test the hardware</h2>
 <label>Pretend a message arrived (the real flow: lights, buzz, envelope)</label>
 <div class="row"><input id="ffrom" value="Test"><input id="fsub" value="Thinking of you"></div>
-<textarea id="fbody">This is a pretend message, so you can test the screen, lights and buzz before Gmail is set up. Turn the knob clockwise to scroll down, then press, turn to choose keep or delete, and press again.</textarea>
-<button class="pri" onclick="post('/api/message',{from:v('ffrom'),subject:v('fsub'),body:v('fbody')}).then(loadMsgs)">Send to the box</button>
+<input id="faddr" type="email" placeholder="Reply address (optional: put your own to try a quick reply)" style="margin-top:8px">
+<textarea id="fbody">This is a pretend message, so you can test the screen, lights and buzz before Gmail is set up. Turn the knob clockwise to scroll down, keep turning for the quick replies, press to send one or to finish. Hold the knob for 2 seconds to delete.</textarea>
+<button class="pri" onclick="post('/api/message',{from:v('ffrom'),subject:v('fsub'),body:v('fbody'),addr:v('faddr')}).then(loadMsgs)">Send to the box</button>
 <label>Rotary encoder (turn it and press it)</label>
 <div class="enc"><div class="dial"><i id="dial"></i></div><div>Position: <b id="encpos">0</b><br>Button: <span class="dot" id="btn"></span> <span id="presses"></span></div></div>
 <label>LED ring</label>
 <div><button onclick="test('chase')">Test each LED</button><button onclick="test('solid')">Colour 1</button><button onclick="test('ledsoff')">Off</button></div>
 <label>E-paper screens (back to normal after 12 s)</label>
-<div><button onclick="test('envelope',{count:3})">Envelope</button><button onclick="test('decide',{choice:1})">Keep or delete</button><button onclick="test('happy')">Happy envelope</button><button onclick="test('pattern')">Test pattern</button></div>
+<div><button onclick="test('arrive')">Hummingbird</button><button onclick="test('envelope',{count:3})">Envelope</button><button onclick="test('react')">Quick replies</button><button onclick="test('nomsg')">No new messages</button><button onclick="test('happy')">Happy envelope</button><button onclick="test('pattern')">Test pattern</button></div>
 <div class="row" style="margin-top:6px"><input id="etext" value="Hello from MessageBox!"><button onclick="test('epd',{text:v('etext')})" style="margin:0">Show text</button></div>
 </section>
 
@@ -140,7 +158,7 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 <button onclick="post('/api/leavesetup',{})">Leave setup mode</button>
 <button onclick="if(confirm('Restart the device?'))post('/api/reboot',{})">Restart</button>
 <button class="bad" onclick="if(confirm('Erase every setting and message, including Wi-Fi and Gmail?'))post('/api/factory',{})">Factory reset</button>
-<div class="hint">On the device: hold the knob down for 5 seconds (the ring fills up) to open the setup Wi-Fi again.</div>
+<div class="hint">On the device: hold the knob down for 20 seconds (the ring fills up) for its settings screen. "Change Wi-Fi" there opens the setup Wi-Fi again.</div>
 </section>
 </main><div id="toast"></div>
 <script>
@@ -149,8 +167,24 @@ function toast(t){const e=$('toast');e.textContent=t;e.style.opacity=1;clearTime
 function post(url,data){return fetch(url,{method:'POST',body:new URLSearchParams(data)}).then(r=>r.text()).catch(()=>'No answer from the device').then(t=>{toast(t);return t})}
 function form(){const d={};document.querySelectorAll('.s').forEach(e=>d[e.id]=e.type=='checkbox'?(e.checked?'1':'0'):e.value);return d}
 function test(what,extra){post('/api/test',Object.assign(form(),{what},extra||{}))}
+function addNick(addr,name){
+  const d=document.createElement('div');d.className='row nick';d.style.marginTop='6px';
+  d.innerHTML='<input type="email" placeholder="their@email.com"><div style="display:flex;gap:6px"><input placeholder="Nickname"><button class="bad" style="margin:0" title="Remove">&times;</button></div>';
+  const [a,n]=d.querySelectorAll('input');a.value=addr;n.value=name;
+  d.querySelector('button').onclick=()=>{d.remove();suggest()};
+  $('nickrows').appendChild(d);if(!addr)a.focus();suggest()
+}
+function nickText(){return[...document.querySelectorAll('.nick')].map(d=>{const[a,n]=d.querySelectorAll('input');return a.value.trim()&&n.value.trim()?a.value.trim().toLowerCase()+'='+n.value.trim().replace(/[\r\n=]/g,' '):''}).filter(Boolean).join('\n')}
+function fillNicks(t){$('nickrows').innerHTML='';(t||'').split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)addNick(l.slice(0,i),l.slice(i+1))})}
+let senders=[];
+function suggest(){
+  const have=new Set([...document.querySelectorAll('.nick input[type=email]')].map(e=>e.value.trim().toLowerCase()));
+  const s=senders.filter(a=>!have.has(a));const b=$('nicksugg');b.innerHTML=s.length?'Senders without one: ':'';
+  s.forEach(a=>{const x=document.createElement('button');x.textContent=a;x.onclick=()=>addNick(a,'');b.appendChild(x)})
+}
 async function save(){
   if(!loaded){toast('Wait for settings to load');return}
+  $('nicks').value=nickText();
   const d=form();for(const k of['wpass','gpass','appass'])d[k]=v(k);
   d.wopen=$('wopen').checked?'1':'0';
   try {
@@ -167,6 +201,7 @@ function fill(s){
   $('wpass').disabled=$('wopen').checked;
   $('wpass').placeholder=s.hasWifiPass?'(leave empty to keep for saved network)':'(none saved)';
   $('gpass').placeholder=s.hasGmailPass?'(saved - leave empty to keep)':'(none saved)';
+  fillNicks(s.nicks);
 }
 function scan(){
   const n=$('nets'),b=$('scanButton');b.disabled=true;n.style.display='block';n.textContent='Scanning...';
@@ -186,8 +221,9 @@ function scan(){
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function loadMsgs(){fetch('/api/messages').then(r=>r.json()).then(list=>{
   const box=$('msgs');if(!list.length){box.textContent='No messages on the box.';return}
+  senders=[...new Set(list.map(m=>(m.addr||'').toLowerCase()).filter(Boolean))];suggest();
   box.className='';box.innerHTML=list.map(m=>'<div class="msg"><div><span class="pill">'+m.state+'</span> <b>'+esc(m.subject||'(no subject)')+'</b> from '+esc(m.from)+
-    ' <span class="sub">'+esc(m.when)+'</span><p>'+esc(m.body)+'</p></div><button class="bad" onclick="post(\'/api/msgdel\',{id:'+m.id+'}).then(loadMsgs)">Delete</button></div>').join('')
+    ' <span class="sub">'+esc(m.when)+'</span>'+(m.reaction?' <span class="pill">replied: '+esc(m.reaction)+(m.reply&&m.reply!='sent'?' ('+m.reply+')':'')+'</span>':'')+'<p>'+esc(m.body)+'</p></div><button class="bad" onclick="post(\'/api/msgdel\',{id:'+m.id+'}).then(loadMsgs)">Delete</button></div>').join('')
 }).catch(()=>{})}
 let lastCounts='';
 function tick(){fetch('/api/status').then(r=>r.json()).then(s=>{

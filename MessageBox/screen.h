@@ -24,6 +24,7 @@
 #include "config.h"
 #include "MailImage.h"
 #include "RefreshPolicy.h"
+#include "reactions.h"
 
 #ifndef HOST_PREVIEW
 #include "MB_EPD370.h"
@@ -36,7 +37,14 @@ EpdDisplay *epdDisplay = nullptr;
 enum FontId : uint8_t { F_REG9, F_BOLD9, F_REG12, F_BOLD12, F_BOLD18 };
 const GFXfont *const FONTS[] = { &FreeSans9pt7b, &FreeSansBold9pt7b, &FreeSans12pt7b, &FreeSansBold12pt7b, &FreeSansBold18pt7b };
 
-enum Screen : uint8_t { SCR_BLANK, SCR_ENVELOPE, SCR_READ, SCR_PICTURE, SCR_DECIDE, SCR_HAPPY, SCR_SETUP, SCR_TEXT, SCR_PATTERN };
+enum Screen : uint8_t { SCR_BLANK, SCR_ENVELOPE, SCR_READ, SCR_PICTURE, SCR_DECIDE, SCR_HAPPY, SCR_SETUP, SCR_TEXT, SCR_PATTERN,
+                        SCR_ARRIVE, SCR_NOMSG, SCR_CAROUSEL, SCR_REACT, SCR_SENT, SCR_MENU, SCR_SLEEP };
+
+const int ARRIVE_FRAMES = 6;
+
+struct MenuItem {
+  String label, value;
+};
 
 struct Line {
   String text;
@@ -55,6 +63,14 @@ struct View {
   bool savedList = false;   // reading saved messages (not new ones)
   int8_t choice = 0;        // decide: -1 delete, +1 save, 0 not chosen yet
   String text;              // setup/text screens
+  int frame = 0;            // arrival animation frame
+  int8_t reaction = -1;     // react: the one selected; sent: the one sent
+  int8_t sentReaction = -1; // react/carousel: the reaction already sent for this message
+  bool replyQueued = false; // sent: waiting for Wi-Fi
+  int savedCount = 0;       // no-messages screen
+  std::vector<MenuItem> menu;
+  int menuSel = 0;
+  bool menuEditing = false;
 };
 
 // ---------------------------------------------------------------- sizes and text layout
@@ -201,6 +217,85 @@ void drawHeart(int cx, int cy, int s, uint16_t c) {
       if (HEART[y][x] == '#') epd.fillRect(cx - 4 * s + x * s, cy - 3 * s + y * s, s, s, c);
 }
 
+// The hummingbird (32 x 20 cells), wings up and wings swept back. Its beak tip is cell (31, 7).
+static const char *const BIRD_UP[20] = {
+  ".....##.........................", ".....###........................", "......###.......................",
+  "......####......................", ".......####.....................", ".......#####....####............",
+  "........#####..######...........", ".........####.###.#############.", "..........###.###########.......",
+  "..............##########........", "...........###########..........", "..........##########............",
+  ".........#########..............", "........########................", ".......######...................",
+  ".....#######....................", "...####..##.....................", "..###.....#.....................",
+  "..#.............................", "................................" };
+static const char *const BIRD_DOWN[20] = {
+  "................................", "................................", "................................",
+  "................................", "................................", "................####............",
+  "...............######...........", "..............###.#############.", "..#######################.......",
+  "....####################........", ".......###############..........", "..........##########............",
+  ".........#########..............", "........########................", ".......######...................",
+  ".....#######....................", "...####..##.....................", "..###.....#.....................",
+  "..#.............................", "................................" };
+
+void drawBird(int x, int y, int s, bool wingsUp) {
+  const char *const *art = wingsUp ? BIRD_UP : BIRD_DOWN;
+  // a white outline first, so the bird stands out in front of the envelope's lines
+  for (int r = 0; r < 20; r++)
+    for (int c = 0; c < 32; c++)
+      if (art[r][c] == '#') epd.fillRect(x + (c - 1) * s, y + (r - 1) * s, 3 * s, 3 * s, GxEPD_WHITE);
+  for (int r = 0; r < 20; r++)
+    for (int c = 0; c < 32; c++)
+      if (art[r][c] == '#') epd.fillRect(x + c * s, y + r * s, s, s, GxEPD_BLACK);
+}
+
+// A line of cells (for the pixel-art envelopes).
+void cellLine(int ox, int oy, int S, int x0, int y0, int x1, int y1, uint16_t c) {
+  int dx = abs(x1 - x0), dy = -abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy;
+  for (;;) {
+    epd.fillRect(ox + x0 * S, oy + y0 * S, S, S, c);
+    if (x0 == x1 && y0 == y1) break;
+    int e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+// The open envelope: flap up, a letter with a heart standing out of it by 'rise' cells.
+// (ox, oy) is the top-left of the envelope's body, which is 26 x 18 cells; the flap reaches
+// 9 cells above it.
+void drawOpenEnvelope(int ox, int oy, int S, int rise) {
+  auto cell = [&](int x, int y, uint16_t c) { epd.fillRect(ox + x * S, oy + y * S, S, S, c); };
+  cellLine(ox, oy, S, 0, 0, 13, -9, GxEPD_BLACK);  // the open flap, behind everything
+  cellLine(ox, oy, S, 25, 0, 12, -9, GxEPD_BLACK);
+  // the letter
+  int top = -rise;
+  epd.fillRect(ox + 3 * S, oy + top * S, 20 * S, (14 - top) * S, GxEPD_WHITE);
+  for (int x = 3; x <= 22; x++) cell(x, top, GxEPD_BLACK);
+  for (int y = top; y <= 13; y++) { cell(3, y, GxEPD_BLACK); cell(22, y, GxEPD_BLACK); }
+  static const char *HEART6[6] = { ".##..##.", "########", "########", ".######.", "..####..", "...##..." };
+  for (int y = 0; y < 6; y++)
+    for (int x = 0; x < 8; x++)
+      if (HEART6[y][x] == '#') cell(9 + x, top + 2 + y, GxEPD_BLACK);
+  // the back of the envelope: sides and bottom; then the front pocket over the letter
+  for (int y = 0; y < 18; y++) { cell(0, y, GxEPD_BLACK); cell(25, y, GxEPD_BLACK); }
+  for (int x = 0; x < 26; x++) cell(x, 17, GxEPD_BLACK);
+  for (int y = 1; y < 17; y++)  // the front pocket: white below a V from the top corners
+    for (int x = 1; x < 25; x++)
+      if (y * 25 >= abs(x * 2 - 25) * 10 + 15 && y >= 1) {
+        int vy = (25 - abs(x * 2 - 25)) * 10 / 25;  // the V's height at this column
+        if (y > vy) cell(x, y, GxEPD_WHITE);
+      }
+  cellLine(ox, oy, S, 0, 0, 12, 10, GxEPD_BLACK);   // the pocket's V
+  cellLine(ox, oy, S, 25, 0, 13, 10, GxEPD_BLACK);
+}
+
+void drawReactionIcon(int x, int y, int i, int scale, uint16_t c) {
+  if (i < 0 || i >= REACTION_COUNT) return;
+  const uint8_t *bmp = REACTIONS[i].bitmap;
+  const int stride = (REACTION_PX + 7) / 8;
+  for (int r = 0; r < REACTION_PX; r++)
+    for (int b = 0; b < REACTION_PX; b++)
+      if (pgm_read_byte(bmp + r * stride + b / 8) & (0x80 >> (b % 8))) epd.fillRect(x + b * scale, y + r * scale, scale, scale, c);
+}
+
 // ---------------------------------------------------------------- drawing helpers
 
 void printAt(int x, int y, const String &s, uint8_t f, uint16_t c = GxEPD_BLACK) {
@@ -229,7 +324,7 @@ void drawHeader(const View &v) {
   String right = String(v.pos) + "/" + String(v.total);
   int rw = textWidth(right, F_BOLD9);
   printAt(W - MARGIN - rw, 21, right, F_BOLD9, GxEPD_WHITE);
-  String left = (v.savedList ? "Saved: " : "From ") + v.from;
+  String left = "From " + v.from;
   printAt(MARGIN, 21, fit(left, F_BOLD9, W - 3 * MARGIN - rw), F_BOLD9, GxEPD_WHITE);
 }
 
@@ -245,9 +340,28 @@ void drawFooter(const String &left, const String &right, bool arrowDown) {
 
 // ---------------------------------------------------------------- the screens
 
+void drawBadge(int bx, int by, int count) {
+  int r = 24;
+  epd.fillCircle(bx, by, r + 3, GxEPD_WHITE);
+  epd.fillCircle(bx, by, r, GxEPD_BLACK);
+  String n = count > 99 ? String("99") : String(count);
+  printCentered(by + 9, n, F_BOLD18, GxEPD_WHITE, bx);
+}
+
 void drawEnvelopeScreen(const View &v, bool happy) {
   int W = epd.width(), H = epd.height();
   bool land = W > H;
+  if (!happy) {  // a message is waiting: the open envelope, the letter showing, and the count
+    int S = land ? 5 : 8;
+    int ew = 26 * S, eh = 18 * S;
+    int ox = (W - ew) / 2, oy = land ? 58 : 150;
+    drawOpenEnvelope(ox, oy, S, 6);
+    drawBadge(ox + ew - 2, oy - 2, v.count);
+    int ty = oy + eh + (land ? 28 : 50);
+    printCentered(ty, v.count == 1 ? String("1 new message") : String(v.count) + " new messages", F_BOLD12);
+    printCentered(ty + (land ? 22 : 30), "press the knob to read", F_REG9);
+    return;
+  }
   int S = land ? 6 : 8;
   int ew = 26 * S, eh = 18 * S;
   int ox = (W - ew) / 2, oy = land ? 44 : 120;
@@ -293,10 +407,10 @@ void drawReadScreen(const View &v) {
     epd.fillRect(W - SCROLLBAR_W - 2, barY, SCROLLBAR_W, barH, GxEPD_BLACK);
   }
   const bool hasPicture = v.picture && v.picture->valid();
-  const char *hint = "press: next";
+  const char *hint = "turn to reply";
   if (more) hint = "turn for more";
   else if (hasPicture) hint = "turn for picture";
-  drawFooter(v.when, hint, more || hasPicture);
+  drawFooter(more || hasPicture ? v.when : String("press: done   hold: delete"), hint, true);
 }
 
 void drawPictureScreen(const View &v) {
@@ -317,7 +431,7 @@ void drawPictureScreen(const View &v) {
   } else {
     printCentered(contentTop() + bodyHeight / 2, "Picture unavailable", F_BOLD12);
   }
-  drawFooter(v.pictureOnly ? v.when : String("turn back for text"), "press: next", false);
+  drawFooter("press: done   hold: delete", "turn to reply", true);
 }
 
 void drawChoiceBox(int x, int y, int w, int h, bool selected, bool del, const String &label, const String &hint) {
@@ -381,6 +495,161 @@ void drawPattern() {
   printCentered(H - 16, "all four edges should show", F_REG9);
 }
 
+// The hummingbird delivery: it flies in, pecks the seal twice, the envelope pops open.
+void drawArriveScreen(const View &v) {
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
+  int S = land ? 6 : 8, B = 3;
+  int ew = 26 * S;
+  int ox = (W - ew) / 2, oy = land ? 78 : 160;
+  int sealX = ox + 13 * S, sealY = oy + 11 * S;          // where the flap meets
+  int peckX = sealX - 31 * B, peckY = sealY - 7 * B - B / 2;  // bird position with its beak on the seal
+  const int f = constrain(v.frame, 0, ARRIVE_FRAMES - 1);
+  if (f < 4) drawEnvelope(ox, oy, S, false);
+  else drawOpenEnvelope(ox, oy + 2 * S, land ? 5 : S, f == 4 ? 3 : 6);
+  switch (f) {
+    case 0: drawBird(-20, land ? 8 : 40, B, true); break;
+    case 1: drawBird((peckX - 20) / 2 - 10, (land ? 8 : 40) + (peckY - (land ? 8 : 40)) / 2, B, false); break;
+    case 2: drawBird(peckX - 14, peckY - 6, B, true); break;
+    case 3:  // peck! little marks round the beak
+      drawBird(peckX, peckY, B, false);
+      for (int k = -1; k <= 1; k++) epd.drawLine(sealX + 6, sealY + k * 8, sealX + 16, sealY + k * 12, GxEPD_BLACK);
+      break;
+    case 4: drawBird(peckX - 8, peckY - 30, B, true); break;
+    case 5: drawBird(W - 32 * B - 4, 2, B, false); break;
+  }
+  if (f >= 3) printCentered(H - (land ? 14 : 40), f >= 4 ? "You've got mail!" : "tap tap!", F_BOLD12);
+}
+
+// Pressed with nothing new: a happy envelope, and the saved ones are a turn away.
+void drawNoMsgScreen(const View &v) {
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
+  int S = land ? 5 : 7;
+  int ew = 26 * S, eh = 18 * S;
+  int ox = (W - ew) / 2, oy = land ? 40 : 110;
+  drawEnvelope(ox, oy, S, true);
+  int ty = oy + eh + (land ? 34 : 56);
+  printCentered(ty, "No new messages", F_BOLD18);
+  String hint = v.savedCount > 0 ? "turn the knob to see your " + String(v.savedCount) + " saved" : String("all caught up!");
+  printCentered(ty + (land ? 26 : 34), hint, F_REG12);
+}
+
+// One saved message as a card: the sender big, the date, an open envelope.
+void drawCarouselScreen(const View &v) {
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
+  printCentered(land ? 30 : 56, fit(v.from, F_BOLD18, W - 2 * MARGIN - 40), F_BOLD18);
+  printCentered(land ? 52 : 86, v.when, F_REG12);
+  int S = land ? 4 : 6;
+  int ew = 26 * S, eh = 18 * S;
+  int ox = (W - ew) / 2, oy = land ? 64 + 9 * S : 110 + 9 * S;
+  drawOpenEnvelope(ox, oy, S, 5);
+  if (v.sentReaction >= 0) {  // the reaction you sent, on the corner of the card
+    int ix = ox + ew - 18, iy = oy + eh - 30;
+    epd.fillCircle(ix + 14, iy + 14, 22, GxEPD_WHITE);
+    epd.drawCircle(ix + 14, iy + 14, 22, GxEPD_BLACK);
+    for (int r = 0; r < REACTION_PX; r += 2)  // half size
+      for (int c = 0; c < REACTION_PX; c += 2)
+        if (pgm_read_byte(REACTIONS[v.sentReaction].bitmap + r * ((REACTION_PX + 7) / 8) + c / 8) & (0x80 >> (c % 8)))
+          epd.drawPixel(ix + c / 2, iy + r / 2, GxEPD_BLACK);
+  }
+  String sub = v.title;
+  if (sub.length()) printCentered(oy + eh + (land ? 16 : 30), fit(sub, F_REG9, W - 2 * MARGIN), F_REG9);
+  // arrows when there are more cards either side
+  int ay = oy + eh / 2;
+  if (v.pos > 1) epd.fillTriangle(MARGIN, ay, MARGIN + 14, ay - 14, MARGIN + 14, ay + 14, GxEPD_BLACK);
+  if (v.pos < v.total) epd.fillTriangle(W - MARGIN, ay, W - MARGIN - 14, ay - 14, W - MARGIN - 14, ay + 14, GxEPD_BLACK);
+  // position dots (up to 12), then the hint
+  int n = min(v.total, 12), dotsW = n * 12;
+  int dx = (W - dotsW) / 2 + 6, dy = H - FOOTER_H - (land ? 7 : 12);
+  for (int i = 0; i < n; i++) {
+    bool on = (v.total <= 12) ? (i == v.pos - 1) : (i == (v.pos - 1) * 12 / v.total);
+    if (on) epd.fillCircle(dx + i * 12, dy, 4, GxEPD_BLACK);
+    else epd.drawCircle(dx + i * 12, dy, 3, GxEPD_BLACK);
+  }
+  drawFooter(String(v.pos) + " of " + String(v.total), "press to open", false);
+}
+
+// Quick reply: six reactions to choose from.
+void drawReactScreen(const View &v) {
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
+  View hv = v;
+  hv.savedList = false;
+  drawHeader(hv);
+  epd.fillRect(0, 0, W, HEADER_H, GxEPD_BLACK);
+  printAt(MARGIN, 21, fit("Reply to " + v.from, F_BOLD9, W - 2 * MARGIN), F_BOLD9, GxEPD_WHITE);
+  int cols = land ? 3 : 2, rows = land ? 2 : 3;
+  int top = HEADER_H + 4, bottom = H - FOOTER_H - 4;
+  int cw = (W - 2 * MARGIN) / cols, ch = (bottom - top) / rows;
+  for (int i = 0; i < REACTION_COUNT; i++) {
+    int cx = MARGIN + (i % cols) * cw, cy = top + (i / cols) * ch;
+    bool sel = i == v.reaction;
+    uint16_t fg = sel ? GxEPD_WHITE : GxEPD_BLACK;
+    if (sel) epd.fillRoundRect(cx + 3, cy + 2, cw - 6, ch - 4, 10, GxEPD_BLACK);
+    int iy = cy + (ch - REACTION_PX - 18) / 2;
+    drawReactionIcon(cx + (cw - REACTION_PX) / 2, iy, i, 1, fg);
+    String label = REACTIONS[i].label;
+    if (i == v.sentReaction) label += " (sent)";
+    printCentered(iy + REACTION_PX + 16, fit(label, F_BOLD9, cw - 8), F_BOLD9, fg, cx + cw / 2);
+  }
+  drawFooter("turn back: message", v.reaction >= 0 ? "press to send" : "turn to choose", false);
+}
+
+void drawSentScreen(const View &v) {
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
+  int sc = 2, size = REACTION_PX * sc;
+  int y = land ? 24 : 90;
+  drawReactionIcon((W - size) / 2, y, v.reaction, sc, GxEPD_BLACK);
+  printCentered(y + size + (land ? 30 : 44), fit("Sent to " + v.from + "!", F_BOLD18, W - 2 * MARGIN), F_BOLD18);
+  if (v.replyQueued) printCentered(y + size + (land ? 54 : 74), "(it goes when the Wi-Fi is back)", F_REG9);
+}
+
+void drawMenuScreen(const View &v) {
+  int W = epd.width(), H = epd.height();
+  epd.fillRect(0, 0, W, HEADER_H + 4, GxEPD_BLACK);
+  printCentered(24, "Settings", F_BOLD12, GxEPD_WHITE);
+  const int top = HEADER_H + 8, rowH = 28, n = (int)v.menu.size();
+  const int fits = max(1, (H - FOOTER_H - top - 4) / rowH);
+  int first = constrain(v.menuSel - fits / 2, 0, max(0, n - fits));  // scrolls to keep the selection in view
+  if (first > 0) epd.fillTriangle(W / 2 - 6, top - 1, W / 2 + 6, top - 1, W / 2, top - 7, GxEPD_WHITE);
+  if (first + fits < n) epd.fillTriangle(W / 2 - 6, H - FOOTER_H - 6, W / 2 + 6, H - FOOTER_H - 6, W / 2, H - FOOTER_H, GxEPD_BLACK);
+  for (int i = first; i < n && i < first + fits; i++) {
+    int y = top + (i - first) * rowH;
+    bool sel = i == v.menuSel;
+    bool editing = sel && v.menuEditing;
+    uint16_t fg = sel && !editing ? GxEPD_WHITE : GxEPD_BLACK;
+    if (sel && !editing) epd.fillRoundRect(MARGIN - 4, y, W - 2 * MARGIN + 8, rowH - 2, 6, GxEPD_BLACK);
+    if (editing) epd.drawRoundRect(MARGIN - 4, y, W - 2 * MARGIN + 8, rowH - 2, 6, GxEPD_BLACK);
+    int base = y + rowH / 2 + 6;
+    printAt(MARGIN + 4, base, v.menu[i].label, F_BOLD9, fg);
+    const String &val = v.menu[i].value;
+    if (val.length()) {
+      String shown = editing ? "< " + val + " >" : val;
+      int vw = textWidth(shown, F_BOLD9);
+      if (editing) epd.fillRoundRect(W - MARGIN - vw - 10, y + 2, vw + 12, rowH - 6, 5, GxEPD_BLACK);
+      printAt(W - MARGIN - vw - 4, base, shown, F_BOLD9, editing ? GxEPD_WHITE : fg);
+    }
+  }
+  drawFooter(v.menuEditing ? "turn to change" : "turn to move", v.menuEditing ? "press: done" : "press: choose", false);
+}
+
+void drawSleepScreen() {
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
+  int S = land ? 4 : 6;
+  int ew = 26 * S, eh = 18 * S;
+  int ox = (W - ew) / 2, oy = land ? 40 : 120;
+  drawEnvelope(ox, oy, S, false);
+  printAt(ox + ew + 6, oy + 30, "z", F_BOLD12);
+  printAt(ox + ew + 22, oy + 14, "z", F_BOLD12);
+  printAt(ox + ew + 40, oy + 2, "Z", F_BOLD18);
+  printCentered(oy + eh + (land ? 40 : 60), "Sleeping", F_BOLD18);
+  printCentered(oy + eh + (land ? 64 : 92), "turn the knob to wake me", F_REG12);
+}
+
 // Draws a View into the picture in RAM (no refresh).
 void drawView(const View &v, uint8_t rotation = cfg.rotation) {
   epd.setRotation(rotation);
@@ -401,6 +670,13 @@ void drawView(const View &v, uint8_t rotation = cfg.rotation) {
       break;
     }
     case SCR_PATTERN: drawPattern(); break;
+    case SCR_ARRIVE: drawArriveScreen(v); break;
+    case SCR_NOMSG: drawNoMsgScreen(v); break;
+    case SCR_CAROUSEL: drawCarouselScreen(v); break;
+    case SCR_REACT: drawReactScreen(v); break;
+    case SCR_SENT: drawSentScreen(v); break;
+    case SCR_MENU: drawMenuScreen(v); break;
+    case SCR_SLEEP: drawSleepScreen(); break;
   }
 }
 
@@ -421,7 +697,7 @@ volatile bool lastRefreshFull = false;
 
 DisplayPage pageKind(Screen screen) {
   if (screen == SCR_BLANK) return DisplayPage::Blank;
-  if (screen == SCR_SETUP) return DisplayPage::Setup;
+  if (screen == SCR_SETUP || screen == SCR_SLEEP) return DisplayPage::Setup;  // a clean full refresh
   if (screen == SCR_PATTERN) return DisplayPage::Pattern;
   return DisplayPage::Content;
 }
