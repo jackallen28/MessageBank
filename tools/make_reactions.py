@@ -23,7 +23,7 @@ REACTIONS = [
     ("tick", "Got it", "Got it."),
     ("question", "Tell me more", "Tell me more?"),
 ]
-SCREEN_PX, EMAIL_PX = 56, 128
+SCREEN_PX, EMAIL_PX = 72, 160
 
 out = ["// Made by tools/make_reactions.py from the Jack-in-a-Box hand-drawn symbols. Don't edit.",
        "#pragma once", "#include <Arduino.h>", "",

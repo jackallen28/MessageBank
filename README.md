@@ -10,10 +10,10 @@ address, and the box shows it on an e-paper screen with a spinning LED ring and 
 | | Screen | LED ring | Vibration |
 |---|---|---|---|
 | **Waiting** | Blank | Off (or a `!led` glow) | |
-| **A message arrives** | A hummingbird flies in, pecks the envelope's seal and it pops open (6 fast refreshes, about 4 s) | Spins in circles: style, colours and speed are settings | tick tick tick tick tick **TICK**, each tick longer and stronger |
+| **A message arrives** | A hummingbird flies in, pecks the envelope's seal twice and it pops open (10 fast refreshes, about 8-10 s) | Spins in circles: style, colours and speed are settings | tick tick tick tick tick **TICK**, each tick longer and stronger |
 | **While it waits** | Stays on the open envelope with the count of new messages | Spins for **1 minute every 10 minutes** until it's read (both settings) | Optional reminder buzz |
 | **Press the knob** | The oldest new message. **Clockwise scrolls down, anticlockwise up.** | Soft glow | A tick for every click; a double bump at the top or bottom |
-| **Keep turning past the end** | **Quick replies:** six hand-drawn reactions. Turn to pick one, press to send it | | |
+| **Keep turning past the end** | **Quick replies:** six hand-drawn symbols, no words. Turn to pick one, press to send it | | |
 | **Press** (not on a reaction) | Done: the message is kept, and the next new one opens | | |
 | **Hold 2 s** while reading | Deletes it (the ring fills red as you hold) | Fills red | One thud |
 | **All read** | Happy envelope, then blank | Rainbow, then goes out LED by LED | A fading brrr-rr-r, like powering down |
@@ -25,8 +25,7 @@ address, and the box shows it on an e-paper screen with a spinning LED ring and 
   You can reply to saved messages too.
 - **Quick replies** go back as an email reply to the sender, **in the same thread**: "Re: their
   subject", with the email's Message-ID and References, so it lands under their message. The
-  email shows the reaction's picture with a word ("Love it!") and an emoji in the plain-text
-  version. The reactions are the hand-drawn symbols from the Jack-in-a-Box project. If the box
+  email is just the reaction's hand-drawn picture (an emoji in the plain-text version). The reactions are the hand-drawn symbols from the Jack-in-a-Box project. If the box
   is offline, the reply waits and goes when it's back (3 tries).
 - **Settings on the box:** hold the knob for **20 s** (the ring fills up white). Turn and press:
   - **Lights:** on or off.
@@ -124,12 +123,12 @@ Things to know:
 
 **Ready-made images** are in [`firmware/`](firmware/):
 
-- **Fresh USB install at 0x0:** flash `MessageBox-main-v15-USB-installer.bin` with Espressif's browser
+- **Fresh USB install at 0x0:** flash `MessageBox-main-v16-USB-installer.bin` with Espressif's browser
   flasher (DIO, 40 MHz, 4 MB). This erases settings and messages.
 - **From the device page's Firmware update:** paste the raw GitHub link to
-  `MessageBox-main-v15-OTA.bin`. This keeps settings and messages.
+  `MessageBox-main-v16-OTA.bin`. This keeps settings and messages.
 - **USB recovery at 0xe000:** for a box with the standard MessageBox OTA partition layout,
-  `MessageBox-main-v15-USB-recovery.bin` installs v15 and keeps settings and messages.
+  `MessageBox-main-v16-USB-recovery.bin` installs v16 and keeps settings and messages.
 
 [`firmware/README.md`](firmware/README.md) has the steps, a test checklist and the review of v9.
 

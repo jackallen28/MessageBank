@@ -186,16 +186,14 @@ class GmailSmtp {
     h += "Content-Type: multipart/alternative; boundary=\"" + b1 + "\"\r\n\r\n";
     client.print(h);
 
-    const String text = String(REACTION_EMOJI[job.reaction]) + " " + r.words + "\r\n\r\n(A quick reply from MessageBox)\r\n";
+    const String text = String(REACTION_EMOJI[job.reaction]) + "\r\n";  // just the symbol
     client.print("--" + b1 + "\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n");
     client.print(wrap76(b64(text)));
 
     client.print("--" + b1 + "\r\nContent-Type: multipart/related; boundary=\"" + b2 + "\"\r\n\r\n");
-    const String html =
-        "<div style=\"font-family:Helvetica,Arial,sans-serif;font-size:20px\">"
-        "<img src=\"cid:reaction@messagebox\" width=\"96\" height=\"96\" alt=\"" + htmlEsc(r.label) +
-        "\" style=\"vertical-align:middle;margin-right:8px\"><b>" + htmlEsc(r.words) + "</b></div>"
-        "<div style=\"color:#888;font-size:12px;margin-top:6px\">A quick reply from MessageBox</div>";
+    const String html =  // just the hand-drawn symbol
+        "<div><img src=\"cid:reaction@messagebox\" width=\"120\" height=\"120\" alt=\"" +
+        htmlEsc(String(REACTION_EMOJI[job.reaction])) + "\"></div>";
     client.print("--" + b2 + "\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n");
     client.print(wrap76(b64(html)));
 

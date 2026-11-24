@@ -41,7 +41,7 @@ enum Screen : uint8_t { SCR_BLANK, SCR_ENVELOPE, SCR_READ, SCR_PICTURE, SCR_DECI
                         SCR_ARRIVE, SCR_NOMSG, SCR_CAROUSEL, SCR_REACT, SCR_SENT, SCR_MENU, SCR_SLEEP,
                         SCR_UPDATE };
 
-const int ARRIVE_FRAMES = 6;
+const int ARRIVE_FRAMES = 10;
 
 struct MenuItem {
   String label, value;
@@ -506,20 +506,28 @@ void drawArriveScreen(const View &v) {
   int sealX = ox + 13 * S, sealY = oy + 11 * S;          // where the flap meets
   int peckX = sealX - 31 * B, peckY = sealY - 7 * B - B / 2;  // bird position with its beak on the seal
   const int f = constrain(v.frame, 0, ARRIVE_FRAMES - 1);
-  if (f < 4) drawEnvelope(ox, oy, S, false);
-  else drawOpenEnvelope(ox, oy + 2 * S, land ? 5 : S, f == 4 ? 3 : 6);
+  const int startX = -20, startY = land ? 8 : 40;
+  auto towards = [&](int k, int of) {  // k/of of the way from the start to just before the seal
+    drawBird(startX + (peckX - 14 - startX) * k / of, startY + (peckY - 6 - startY) * k / of, B, k % 2 == 0);
+  };
+  if (f < 7) drawEnvelope(ox, oy, S, false);
+  else drawOpenEnvelope(ox, oy + 2 * S, land ? 5 : S, f == 7 ? 2 : (f == 8 ? 4 : 6));
+  auto peckMarks = [&]() {
+    for (int k = -1; k <= 1; k++) epd.drawLine(sealX + 6, sealY + k * 8, sealX + 16, sealY + k * 12, GxEPD_BLACK);
+  };
   switch (f) {
-    case 0: drawBird(-20, land ? 8 : 40, B, true); break;
-    case 1: drawBird((peckX - 20) / 2 - 10, (land ? 8 : 40) + (peckY - (land ? 8 : 40)) / 2, B, false); break;
-    case 2: drawBird(peckX - 14, peckY - 6, B, true); break;
-    case 3:  // peck! little marks round the beak
-      drawBird(peckX, peckY, B, false);
-      for (int k = -1; k <= 1; k++) epd.drawLine(sealX + 6, sealY + k * 8, sealX + 16, sealY + k * 12, GxEPD_BLACK);
-      break;
-    case 4: drawBird(peckX - 8, peckY - 30, B, true); break;
-    case 5: drawBird(W - 32 * B - 4, 2, B, false); break;
+    case 0: towards(0, 3); break;                                // flies in from the top left...
+    case 1: towards(1, 3); break;
+    case 2: towards(2, 3); break;
+    case 3: towards(3, 3); break;                                // ...hovers by the seal
+    case 4: drawBird(peckX, peckY, B, false); peckMarks(); break;  // peck
+    case 5: drawBird(peckX - 14, peckY - 6, B, true); break;       // back
+    case 6: drawBird(peckX, peckY, B, false); peckMarks(); break;  // peck again
+    case 7: drawBird(peckX - 22, peckY - 26, B, true); break;      // the flap pops up
+    case 8: drawBird((peckX + W - 32 * B) / 2, peckY / 2 - 10, B, false); break;  // the letter rises, off it goes
+    case 9: drawBird(W - 32 * B - 4, 2, B, true); break;
   }
-  if (f >= 3) printCentered(H - (land ? 14 : 40), f >= 4 ? "You've got mail!" : "tap tap!", F_BOLD12);
+  if (f >= 8) printCentered(H - (land ? 14 : 40), "You've got mail!", F_BOLD12);
 }
 
 // Pressed with nothing new: a happy envelope, and the saved ones are a turn away.
@@ -547,9 +555,10 @@ void drawCarouselScreen(const View &v) {
   int ox = (W - ew) / 2, oy = land ? 64 + 9 * S : 110 + 9 * S;
   drawOpenEnvelope(ox, oy, S, 5);
   if (v.sentReaction >= 0) {  // the reaction you sent, on the corner of the card
-    int ix = ox + ew - 18, iy = oy + eh - 30;
-    epd.fillCircle(ix + 14, iy + 14, 22, GxEPD_WHITE);
-    epd.drawCircle(ix + 14, iy + 14, 22, GxEPD_BLACK);
+    const int half = REACTION_PX / 2;
+    int ix = ox + ew - 18, iy = oy + eh - 34;
+    epd.fillCircle(ix + half / 2, iy + half / 2, half / 2 + 8, GxEPD_WHITE);
+    epd.drawCircle(ix + half / 2, iy + half / 2, half / 2 + 8, GxEPD_BLACK);
     for (int r = 0; r < REACTION_PX; r += 2)  // half size
       for (int c = 0; c < REACTION_PX; c += 2)
         if (pgm_read_byte(REACTIONS[v.sentReaction].bitmap + r * ((REACTION_PX + 7) / 8) + c / 8) & (0x80 >> (c % 8)))
@@ -589,23 +598,22 @@ void drawReactScreen(const View &v) {
     bool sel = i == v.reaction;
     uint16_t fg = sel ? GxEPD_WHITE : GxEPD_BLACK;
     if (sel) epd.fillRoundRect(cx + 3, cy + 2, cw - 6, ch - 4, 10, GxEPD_BLACK);
-    int iy = cy + (ch - REACTION_PX - 18) / 2;
-    drawReactionIcon(cx + (cw - REACTION_PX) / 2, iy, i, 1, fg);
-    String label = REACTIONS[i].label;
-    if (i == v.sentReaction) label += " (sent)";
-    printCentered(iy + REACTION_PX + 16, fit(label, F_BOLD9, cw - 8), F_BOLD9, fg, cx + cw / 2);
+    drawReactionIcon(cx + (cw - REACTION_PX) / 2, cy + (ch - REACTION_PX) / 2, i, 1, fg);
+    if (i == v.sentReaction) {  // the one already sent: a little filled dot in the corner
+      epd.fillCircle(cx + cw - 16, cy + 14, 6, fg);
+    }
   }
-  drawFooter("turn back: message", v.reaction >= 0 ? "press to send" : "turn to choose", false);
+  drawFooter(v.sentReaction >= 0 ? "dot: already sent" : "turn back: message", v.reaction >= 0 ? "press to send" : "turn to choose", false);
 }
 
 void drawSentScreen(const View &v) {
   int W = epd.width(), H = epd.height();
   bool land = W > H;
-  int sc = 2, size = REACTION_PX * sc;
-  int y = land ? 24 : 90;
+  int sc = land ? 2 : 2, size = REACTION_PX * sc;
+  int y = land ? 12 : 80;
   drawReactionIcon((W - size) / 2, y, v.reaction, sc, GxEPD_BLACK);
-  printCentered(y + size + (land ? 30 : 44), fit("Sent to " + v.from + "!", F_BOLD18, W - 2 * MARGIN), F_BOLD18);
-  if (v.replyQueued) printCentered(y + size + (land ? 54 : 74), "(it goes when the Wi-Fi is back)", F_REG9);
+  printCentered(y + size + (land ? 28 : 44), fit("Sent to " + v.from + "!", F_BOLD18, W - 2 * MARGIN), F_BOLD18);
+  if (v.replyQueued) printCentered(y + size + (land ? 48 : 70), "(it goes when the Wi-Fi is back)", F_REG9);
 }
 
 void drawMenuScreen(const View &v) {

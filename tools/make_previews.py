@@ -5,8 +5,8 @@ from PIL import Image, ImageDraw
 
 src = sys.argv[1] if len(sys.argv) > 1 else "."
 out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), "..", "screens.png")
-SHOTS = [("a0_arrive", "1. A message arrives..."), ("a2_arrive", "2. ...the hummingbird flies in"),
-         ("a3_arrive", "3. ...pecks the seal"), ("a4_arrive", "4. ...and it pops open"),
+SHOTS = [("a0_arrive", "1. A message arrives..."), ("a3_arrive", "2. ...the hummingbird flies in"),
+         ("a4_arrive", "3. ...pecks the seal, twice"), ("a8_arrive", "4. ...and it pops open"),
          ("1_envelope", "Waiting: press to read"), ("2_read_top", "Reading (turn to scroll)"),
          ("d_react", "Turn on past the end: quick replies"), ("e_sent", "Press: sent, in the same thread"),
          ("8_happy", "All read"), ("b_nomsg", "Press with nothing new"),

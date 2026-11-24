@@ -1,6 +1,12 @@
-# MessageBox firmware v15
+# MessageBox firmware v16
 
-**v15** adds **automatic updates**. Once a day (and 10 minutes after it starts) the box reads
+**v16:** the hummingbird stays longer (10 frames: it flies in, hovers, pecks twice, the envelope
+pops open and it flies off), without the "tap tap!" text. Quick replies are symbols only: the
+reply screen shows just the six pictures (a dot marks one already sent), and the reply email
+is just the hand-drawn picture (an emoji in the plain-text version).
+
+
+**v15** added **automatic updates**. Once a day (and 10 minutes after it starts) the box reads
 [`latest.txt`](latest.txt) in this repo. If it names a newer version, the box installs it the
 next time it has been idle for a minute (blank, or showing the waiting envelope), shows
 "Updating to v.." with a progress bar, and restarts. A bad update rolls back by itself, as
@@ -38,9 +44,9 @@ and emailed pictures. The source is in [`../MessageBox/`](../MessageBox/).
 
 | File | Use |
 |---|---|
-| `MessageBox-main-v15-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
-| `MessageBox-main-v15-USB-recovery.bin` | USB recovery flashed at **0xe000** on the standard MessageBox OTA layout. **Keeps settings and messages.** |
-| `MessageBox-main-v15-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
+| `MessageBox-main-v16-OTA.bin` | App image for the web page's **Firmware update**. **Keeps settings and messages.** |
+| `MessageBox-main-v16-USB-recovery.bin` | USB recovery flashed at **0xe000** on the standard MessageBox OTA layout. **Keeps settings and messages.** |
+| `MessageBox-main-v16-USB-installer.bin` | Full 4 MB image, flashed over USB at **0x0**. Installs the bootloader, partition table and app. **Erases settings and messages.** |
 | `SHA256SUMS.txt` | Checksums of the firmware images |
 
 Built with Arduino CLI 1.6, Arduino-ESP32 **3.3.7**, GxEPD2 1.6.9, Adafruit GFX 1.13.0, BusIO 1.17.4
@@ -54,7 +60,7 @@ device page's **Firmware update** and select **Install and restart**. After it r
 leave it running for at least 30 seconds.
 
 ```text
-https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v15-OTA.bin
+https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/MessageBox-main-v16-OTA.bin
 ```
 
 ### USB recovery for an existing MessageBox
@@ -66,15 +72,15 @@ settings, saved messages, and pictures.
 
 1. Open the [Espressif browser flasher](https://espressif.github.io/esptool-js/) in Chrome or Edge and press **Connect**.
 2. Use one file row and set its flash address to **`0xe000`**. Leave flash mode, frequency, and size on **keep**.
-3. Select `MessageBox-main-v15-USB-recovery.bin` and press **Program** with **Erase all** unchecked.
-4. Press RESET and check that the device status shows `MessageBox-main-v15`.
+3. Select `MessageBox-main-v16-USB-recovery.bin` and press **Program** with **Erase all** unchecked.
+4. Press RESET and check that the device status shows `MessageBox-main-v16`.
 
 ### Fresh USB install (erases settings and messages)
 
 1. Open https://espressif.github.io/esptool-js/ in Chrome or Edge and press **Connect**.
    If no port appears, hold BOOT while plugging in.
 2. Use the flash settings **DIO, 40 MHz, 4 MB**.
-3. Set the address to **0x0**, choose `MessageBox-main-v15-USB-installer.bin` and press **Program**.
+3. Set the address to **0x0**, choose `MessageBox-main-v16-USB-installer.bin` and press **Program**.
 4. Press RESET.
 
 If the flasher can't get into download mode with the screen connected, unplug the screen's RES
@@ -159,7 +165,7 @@ Once it works without them, GPIO4 and GPIO8 are free too.
 ## Test checklist
 
 - [ ] **First boot:** join `MessageBox-Setup` and open 192.168.4.1. The status shows
-      `MessageBox-main-v15`.
+      `MessageBox-main-v16`.
 - [ ] **Hardware tests:**
   - [ ] *Test each LED* (12 × red, green, blue)
   - [ ] the ticks and the new-message buzz

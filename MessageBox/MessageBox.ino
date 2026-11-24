@@ -1665,8 +1665,8 @@ void loop() {
       // the next animation frame once the panel has shown this one
       const bool shown = refreshCount != arriveRefreshes || now - arriveShownAt > 2500;
       if (arriveFrame >= ARRIVE_FRAMES - 1) {
-        if (shown && now - arriveShownAt > 1500) enterEnvelope();
-      } else if (shown && now - arriveShownAt > 150) {
+        if (shown && now - arriveShownAt > 2500) enterEnvelope();  // a moment on "You've got mail!"
+      } else if (shown && now - arriveShownAt > 350) {  // about 0.8-1 s a frame
         arriveFrame++;
         showArriveFrame();
       }
