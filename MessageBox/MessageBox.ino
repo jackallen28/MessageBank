@@ -122,7 +122,7 @@ bool longFired = false;
 
 const char *const UI_NAMES[] = { "waiting (blank)", "new message envelope", "reading", "choosing a quick reply",
                                  "all read", "setup", "a message arriving", "no new messages",
-                                 "looking through saved messages", "reply sent", "settings", "going to sleep" };
+                                 "looking through saved messages", "reply sent", "settings", "going to sleep", "updating" };
 Ui ui = UI_IDLE;
 
 uint32_t curId = 0;        // the message being read
@@ -153,6 +153,18 @@ std::vector<ReplyJob> outbox;
 struct ReplyResult { uint32_t msgId; bool ok; bool giveUp; String error; };
 std::vector<ReplyResult> replyResults;
 volatile bool replyNow = false;
+
+// Updates: the mail task reads the update file (firmware/latest.txt in the repo); loop() decides.
+struct UpdateCheck { bool ok = false; int version = 0; String url, error; };
+UpdateCheck updResult;                   // guarded by mailLock
+volatile bool updCheckRequest = false, updResultReady = false;
+bool updManual = false;                  // asked for on the box or the web page: show the result
+bool updInstalling = false;
+String updPendingUrl;                    // a newer version found by the daily check
+int updPendingVersion = 0, updLastPercent = -1;
+uint32_t updNextAuto = 0, updShownAt = 0;
+String updTitle, updDetail;
+int updPercent = -1;
 
 // ---------------------------------------------------------------- helpers
 
@@ -213,6 +225,7 @@ void ringForState() {
     case UI_CAROUSEL: ringSet(RING_DIM, cfg.color2); break;
     case UI_SETUP: ringSet(RING_SOLID, 0x0040FF); break;
     case UI_MENU: ringSet(RING_DIM, 0xFFFFFF); break;
+    case UI_UPDATE: ringSet(RING_DIM, 0x0040FF); break;
     case UI_NOMSG:   // the party animation was started on the way in
     case UI_SLEEP: break;
   }
@@ -225,13 +238,16 @@ String setupText() {
          (cfg.ssid.length() ? "Saved Wi-Fi: " + cfg.ssid + " (retrying)" : String("No Wi-Fi saved yet"));
 }
 
-enum MenuId : uint8_t { MI_LIGHTS, MI_BUZZ, MI_BED, MI_FROM, MI_TO, MI_WIFI, MI_SLEEP, MI_EXIT, MI_COUNT };
+enum MenuId : uint8_t { MI_LIGHTS, MI_BUZZ, MI_BED, MI_FROM, MI_TO, MI_AUTOUPD, MI_CHECKUPD, MI_WIFI, MI_SLEEP, MI_EXIT,
+                        MI_COUNT };
 
 std::vector<MenuItem> menuItems() {
   auto onOff = [](bool b) { return String(b ? "On" : "Off"); };
   return { { "Lights", onOff(cfg.ledsOn) }, { "Buzz for new messages", onOff(cfg.notifyVibe) },
            { "Bedtime (quiet)", onOff(cfg.bedtime) }, { "Quiet from", hhmm(cfg.bedFrom) },
-           { "Quiet until", hhmm(cfg.bedTo) }, { "Change Wi-Fi", "" }, { "Shut down", "" }, { "Exit", "" } };
+           { "Quiet until", hhmm(cfg.bedTo) }, { "Automatic updates", onOff(cfg.autoUpdate) },
+           { "Check for updates", "v" + String(firmwareNumber(FIRMWARE_VERSION)) },
+           { "Change Wi-Fi", "" }, { "Shut down", "" }, { "Exit", "" } };
 }
 
 // Sends the screen for the current state to the drawing task.
@@ -247,6 +263,7 @@ void showUi(bool forceFull = false) {
     case UI_NOMSG: v.scr = SCR_NOMSG; v.savedCount = countState(MSG_SAVED); break;
     case UI_MENU: v.scr = SCR_MENU; v.menu = menuItems(); v.menuSel = menuSel; v.menuEditing = menuEditing; break;
     case UI_SLEEP: v.scr = SCR_SLEEP; break;
+    case UI_UPDATE: v.scr = SCR_UPDATE; v.title = updTitle; v.text = updDetail; v.pos = updPercent; break;
     case UI_CAROUSEL: {
       std::vector<int> s = savedIdx();
       if (s.empty()) { v.scr = SCR_BLANK; break; }
@@ -492,6 +509,100 @@ void goToSleep() {
 
 void startAP(bool byUser);
 
+void showUpdate(const String &title, const String &detail, int percent = -1) {
+  updTitle = title;
+  updDetail = detail;
+  updPercent = percent;
+  updShownAt = millis();
+  if (ui != UI_UPDATE) setUi(UI_UPDATE);
+  else showUi();
+}
+
+// Check the repo for a newer version now (from the box's settings or the web page).
+void requestUpdateCheck(bool showOnBox) {
+  if (firmwareUpdater.active()) return;
+  if (!WiFi.isConnected()) {
+    if (showOnBox) showUpdate("Couldn't check", "The box isn't on the home Wi-Fi.");
+    return;
+  }
+  updManual = true;
+  updCheckRequest = true;
+  if (showOnBox || ui == UI_IDLE) showUpdate("Checking for updates", "Looking at the MessageBox repo on GitHub");
+}
+
+void startInstall(const String &url, int version) {
+  String err;
+  if (!firmwareUpdater.start(url, err)) {
+    logf("Update to v%d not started: %s", version, err.c_str());
+    if (ui == UI_UPDATE) showUpdate("Update didn't start", err);
+    return;
+  }
+  logf("Installing update v%d from %s", version, url.c_str());
+  updInstalling = true;
+  updPendingUrl = "";
+  updLastPercent = -1;
+  showUpdate("Updating to v" + String(version), "Downloading. Don't unplug the box.", 0);
+}
+
+// What the daily or manual check found.
+void handleUpdateResult() {
+  if (!updResultReady) return;
+  updResultReady = false;
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  UpdateCheck c = updResult;
+  xSemaphoreGive(mailLock);
+  const int current = firmwareNumber(FIRMWARE_VERSION);
+  const bool newer = c.ok && c.version > current;
+  if (c.ok) logf("Update check: latest v%d, this is v%d", c.version, current);
+  else logf("Update check failed: %s", c.error.c_str());
+  if (updManual) {
+    updManual = false;
+    if (newer) startInstall(c.url, c.version);
+    else if (ui == UI_UPDATE) showUpdate(c.ok ? "Up to date" : "Couldn't check",
+                                         c.ok ? "This box has v" + String(current) + ", the latest." : c.error);
+  } else if (newer) {
+    updPendingUrl = c.url;
+    updPendingVersion = c.version;
+  }
+}
+
+// Keeps the update screen in step with the download; installs a found update while idle.
+void updateLoop(uint32_t now) {
+  handleUpdateResult();
+  // an update started from the web page shows on the box too
+  if (firmwareUpdater.active() && !updInstalling && ui != UI_SETUP) {
+    updInstalling = true;
+    updLastPercent = -1;
+    showUpdate("Updating", "Downloading. Don't unplug the box.", 0);
+  }
+  // the daily check found a newer version: install it once nobody has used the box for a minute
+  if (updPendingUrl.length() && cfg.autoUpdate && !updInstalling && (ui == UI_IDLE || ui == UI_ENVELOPE) &&
+      now - lastInput > 60000)
+    startInstall(updPendingUrl, updPendingVersion);
+  if (updManual && !updInstalling && now - updShownAt > 60000) {  // the check never answered
+    updManual = updCheckRequest = false;
+    if (ui == UI_UPDATE) showUpdate("Couldn't check", "No answer from GitHub. Try again later.");
+  }
+  if (ui != UI_UPDATE) return;
+  if (updInstalling) {
+    FirmwareUpdateStatus st = firmwareUpdater.status();
+    if (st.restarting) {
+      if (updPercent != 100) showUpdate(updTitle, "Installed. Restarting...", 100);
+    } else if (st.busy) {
+      int pct = st.total ? (int)((uint64_t)st.written * 100 / st.total) : 0;
+      if (pct / 20 != updLastPercent / 20) {  // a screen refresh every 20 %
+        updLastPercent = pct;
+        showUpdate(updTitle, "Downloading. Don't unplug the box.", pct);
+      }
+    } else {
+      updInstalling = false;
+      showUpdate("Update failed", st.message + " The box keeps its current version.");
+    }
+  } else if (!updCheckRequest && !updManual && now - updShownAt > 5000) {
+    resumeUi();  // "up to date" or an error has been shown long enough
+  }
+}
+
 void menuPress() {
   switch (menuSel) {
     case MI_LIGHTS: cfg.ledsOn = !cfg.ledsOn; saveSettings(); break;
@@ -506,6 +617,8 @@ void menuPress() {
       menuEditing = !menuEditing;
       if (!menuEditing) saveSettings();
       break;
+    case MI_AUTOUPD: cfg.autoUpdate = !cfg.autoUpdate; saveSettings(); break;
+    case MI_CHECKUPD: hapticTick(true); requestUpdateCheck(true); return;
     case MI_WIFI: startAP(true); return;
     case MI_SLEEP: enterSleep(); return;
     case MI_EXIT: resumeUi(); return;
@@ -534,6 +647,7 @@ void addMessage(const String &from, const String &subject, const String &body, c
     case UI_SENT: if (!savedList) showUi(); break;  // the "2/5" in the header grows
     case UI_SETUP:
     case UI_MENU:
+    case UI_UPDATE:
     case UI_SLEEP: break;  // the envelope shows afterwards
   }
 }
@@ -699,13 +813,16 @@ void onPress() {
       break;
     case UI_SLEEP:
       break;
+    case UI_UPDATE:
+      if (!updInstalling && !updManual) { hapticTick(true); resumeUi(); }
+      break;
   }
 }
 
 // How long a hold does something here: 2 s deletes the message being read; 20 s opens settings.
 uint32_t holdNeeded() {
   if (ui == UI_READ || ui == UI_REACT) return DELETE_HOLD_MS;
-  if (ui == UI_MENU || ui == UI_SLEEP || ui == UI_SENT || ui == UI_SETUP) return 0;
+  if (ui == UI_MENU || ui == UI_SLEEP || ui == UI_SENT || ui == UI_SETUP || ui == UI_UPDATE) return 0;
   return MENU_HOLD_MS;
 }
 
@@ -852,10 +969,52 @@ bool replyWaiting() {
   return any;
 }
 
+// Reads the update file: "version=15" and "file=MessageBox-main-v15-OTA.bin" (or "url=...").
+void checkForUpdate() {
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  const String manifest = cfg.updateUrl;
+  xSemaphoreGive(mailLock);
+  UpdateCheck c;
+  String text;
+  if (firmwareUpdater.fetchText(manifest, text, c.error)) {
+    String file;
+    int p = 0;
+    while (p < (int)text.length()) {
+      int e = text.indexOf('\n', p);
+      if (e < 0) e = text.length();
+      String line = text.substring(p, e);
+      p = e + 1;
+      line.trim();
+      int eq = line.indexOf('=');
+      if (eq <= 0 || line.startsWith("#")) continue;
+      String k = line.substring(0, eq), v = line.substring(eq + 1);
+      k.trim();
+      v.trim();
+      if (k == "version") c.version = v.toInt();
+      else if (k == "file") file = v;
+      else if (k == "url") c.url = v;
+    }
+    if (!c.url.length() && file.length()) c.url = manifest.substring(0, manifest.lastIndexOf('/') + 1) + file;
+    c.ok = c.version > 0 && c.url.length();
+    if (!c.ok) c.error = "The update file has no version or file name";
+  }
+  xSemaphoreTake(mailLock, portMAX_DELAY);
+  updResult = c;
+  xSemaphoreGive(mailLock);
+  updResultReady = true;
+}
+
 void mailTaskFn(void *) {
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(250));
     if (!WiFi.isConnected() || firmwareUpdater.active()) continue;
+    const bool timeOk = time(nullptr) > 1700000000;
+    if (updCheckRequest || (cfg.autoUpdate && timeOk && (int32_t)(millis() - updNextAuto) >= 0)) {
+      updCheckRequest = false;
+      updNextAuto = millis() + 24UL * 3600 * 1000;  // once a day
+      checkForUpdate();
+      continue;
+    }
     if (replyWaiting()) { replyNow = false; sendOneReply(); continue; }
     xSemaphoreTake(mailLock, portMAX_DELAY);
     const uint32_t pollSec = cfg.pollSec;
@@ -1078,6 +1237,7 @@ void handleStatus() {
   j += ",\"ledson\":" + jb(cfg.ledsOn) + ",\"spinsec\":" + String(cfg.spinSec) + ",\"spinevery\":" + String(cfg.spinEveryMin);
   j += ",\"bed\":" + jb(cfg.bedtime) + ",\"bedfrom\":\"" + hhmm(cfg.bedFrom) + "\",\"bedto\":\"" + hhmm(cfg.bedTo) + "\"";
   j += ",\"nicks\":\"" + jsonEsc(cfg.nicknames) + "\"";
+  j += ",\"autoupd\":" + jb(cfg.autoUpdate) + ",\"updurl\":\"" + jsonEsc(cfg.updateUrl) + "\"";
   j += ",\"bright\":" + String(cfg.brightness);
   j += ",\"hknob\":" + jb(cfg.knobHaptics) + ",\"hpow\":" + String(cfg.tickPower) + ",\"hms\":" + String(cfg.tickMs);
   j += ",\"nvibe\":" + jb(cfg.notifyVibe) + ",\"nticks\":" + String(cfg.ntfTicks);
@@ -1228,6 +1388,8 @@ void handleSettings() {
   };
   if (server.hasArg("bedfrom")) next.bedFrom = parseHhmm(arg("bedfrom"), next.bedFrom);
   if (server.hasArg("bedto")) next.bedTo = parseHhmm(arg("bedto"), next.bedTo);
+  next.autoUpdate = argBool("autoupd", next.autoUpdate);
+  if (arg("updurl").length()) next.updateUrl = arg("updurl");
   if (server.hasArg("nicks")) {
     String n = server.arg("nicks");
     n.replace("\r", "");
@@ -1373,6 +1535,12 @@ void setupWeb() {
     else if (ui == UI_CAROUSEL) { if (countState(MSG_SAVED) == 0) resumeUi(); else showUi(); }
     sendText("Deleted");
   });
+  server.on("/api/checkupdate", HTTP_POST, [] {
+    if (!WiFi.isConnected()) { sendText("Not on the home Wi-Fi yet, so GitHub can't be reached"); return; }
+    if (firmwareUpdater.active()) { sendText("An update is already running"); return; }
+    requestUpdateCheck(false);
+    sendText("Checking for a newer version. If there is one, it installs and the box restarts. Watch the log.");
+  });
   server.on("/api/checkmail", HTTP_POST, [] {
     if (!WiFi.isConnected()) { sendText("Not on the home Wi-Fi yet, so Gmail can't be reached"); return; }
     mailCheckNow = true;
@@ -1456,6 +1624,7 @@ void setup() {
   for (const Message &m : store)  // quick replies that hadn't gone before a restart
     if (m.replyState == REPLY_PENDING && m.reaction >= 0) queueReply(m);
   notifyAt = lastRemind = millis();
+  updNextAuto = millis() + 10 * 60000UL;  // the first automatic update check, 10 min after starting
   if (wokeByKnob) logf("Woken by the knob");
   screenBegin();
   if (apOn) {
@@ -1482,6 +1651,7 @@ void loop() {
   confirmFirmware();
 
   uint32_t now = millis();
+  updateLoop(now);
   switch (ui) {
     case UI_ENVELOPE:
       // a message is waiting: the ring spins for a minute every ten (settings), not at bedtime

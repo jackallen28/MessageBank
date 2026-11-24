@@ -38,7 +38,8 @@ enum FontId : uint8_t { F_REG9, F_BOLD9, F_REG12, F_BOLD12, F_BOLD18 };
 const GFXfont *const FONTS[] = { &FreeSans9pt7b, &FreeSansBold9pt7b, &FreeSans12pt7b, &FreeSansBold12pt7b, &FreeSansBold18pt7b };
 
 enum Screen : uint8_t { SCR_BLANK, SCR_ENVELOPE, SCR_READ, SCR_PICTURE, SCR_DECIDE, SCR_HAPPY, SCR_SETUP, SCR_TEXT, SCR_PATTERN,
-                        SCR_ARRIVE, SCR_NOMSG, SCR_CAROUSEL, SCR_REACT, SCR_SENT, SCR_MENU, SCR_SLEEP };
+                        SCR_ARRIVE, SCR_NOMSG, SCR_CAROUSEL, SCR_REACT, SCR_SENT, SCR_MENU, SCR_SLEEP,
+                        SCR_UPDATE };
 
 const int ARRIVE_FRAMES = 6;
 
@@ -636,6 +637,34 @@ void drawMenuScreen(const View &v) {
   drawFooter(v.menuEditing ? "turn to change" : "turn to move", v.menuEditing ? "press: done" : "press: choose", false);
 }
 
+// Updating: a headline, a progress bar (pos = percent, or -1 for none) and a detail line.
+void drawUpdateScreen(const View &v) {
+  int W = epd.width(), H = epd.height();
+  bool land = W > H;
+  // a little download arrow into a tray
+  int cx = W / 2, top = land ? 22 : 80, s = 5;
+  epd.fillRect(cx - 2 * s, top, 4 * s, 7 * s, GxEPD_BLACK);
+  epd.fillTriangle(cx - 6 * s, top + 7 * s, cx + 6 * s, top + 7 * s, cx, top + 13 * s, GxEPD_BLACK);
+  epd.fillRect(cx - 9 * s, top + 14 * s, 18 * s, s, GxEPD_BLACK);
+  epd.fillRect(cx - 9 * s, top + 11 * s, s, 4 * s, GxEPD_BLACK);
+  epd.fillRect(cx + 8 * s, top + 11 * s, s, 4 * s, GxEPD_BLACK);
+  int y = top + 15 * s + (land ? 34 : 50);
+  printCentered(y, fit(v.title, F_BOLD18, W - 2 * MARGIN), F_BOLD18);
+  if (v.pos >= 0) {
+    int bw = W - 6 * MARGIN, bx = 3 * MARGIN, by = y + 14;
+    epd.drawRoundRect(bx, by, bw, 16, 6, GxEPD_BLACK);
+    epd.fillRoundRect(bx + 3, by + 3, max(0, (bw - 6) * min(v.pos, 100) / 100), 10, 4, GxEPD_BLACK);
+    y = by + 16;
+  }
+  std::vector<Line> lines;
+  wrapInto(lines, v.text, F_REG9, W - 2 * MARGIN);
+  for (const Line &l : lines) {
+    y += lineHeight(F_REG9);
+    if (y > H - 4) break;
+    printCentered(y, l.text, F_REG9);
+  }
+}
+
 void drawSleepScreen() {
   int W = epd.width(), H = epd.height();
   bool land = W > H;
@@ -677,6 +706,7 @@ void drawView(const View &v, uint8_t rotation = cfg.rotation) {
     case SCR_SENT: drawSentScreen(v); break;
     case SCR_MENU: drawMenuScreen(v); break;
     case SCR_SLEEP: drawSleepScreen(); break;
+    case SCR_UPDATE: drawUpdateScreen(v); break;
   }
 }
 

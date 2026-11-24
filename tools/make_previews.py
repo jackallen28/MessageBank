@@ -10,7 +10,7 @@ SHOTS = [("a0_arrive", "1. A message arrives..."), ("a2_arrive", "2. ...the humm
          ("1_envelope", "Waiting: press to read"), ("2_read_top", "Reading (turn to scroll)"),
          ("d_react", "Turn on past the end: quick replies"), ("e_sent", "Press: sent, in the same thread"),
          ("8_happy", "All read"), ("b_nomsg", "Press with nothing new"),
-         ("c_carousel", "Turn: the saved messages"), ("f_menu", "Hold 20 s: settings"), ("g_sleep", "Shut down")]
+         ("c_carousel", "Turn: the saved messages"), ("f_menu", "Hold 20 s: settings"), ("h_update", "Updating (automatic or Check for updates)"), ("g_sleep", "Shut down")]
 W, H, pad, lab, cols = 416, 240, 18, 26, 3
 rows = (len(SHOTS) + cols - 1) // cols
 sheet = Image.new("RGB", (cols * (W + pad) + pad, rows * (H + pad + lab) + pad), (255, 255, 255))

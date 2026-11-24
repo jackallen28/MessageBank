@@ -146,6 +146,11 @@ app password at myaccount.google.com/apppasswords. Your normal Google password d
 <section><h2>Log</h2><pre id="log"></pre></section>
 
 <section><h2>Firmware update</h2>
+<label class="ck"><input id="autoupd" class="s" type="checkbox"> Update automatically (checks once a day; installs while the box isn't in use)</label>
+<button onclick="post('/api/checkupdate',{})">Check for updates now</button>
+<label>Update file (advanced)</label><input id="updurl" class="s" type="url">
+<div class="hint">The box reads this file to see the latest version. Save settings after changing either of these.</div>
+<h3>Or install a particular file</h3>
 <label>Public GitHub firmware download link</label>
 <input id="fwurl" type="url" placeholder="https://github.com/owner/repo/releases/download/version/MessageBox-main-ota.bin">
 <button id="fwinstall" class="pri" onclick="installFirmware()" disabled>Install and restart</button>

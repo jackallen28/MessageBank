@@ -47,6 +47,44 @@ class FirmwareUpdater {
     return busy;
   }
 
+  // Reads a small text file (the update manifest) from GitHub over verified HTTPS.
+  bool fetchText(const String &url, String &out, String &error) {
+    out = "";
+    if (!url.startsWith("https://raw.githubusercontent.com/") && !url.startsWith("https://github.com/")) {
+      error = "The update file must be on GitHub (https://raw.githubusercontent.com/...)";
+      return false;
+    }
+    if (!WiFi.isConnected()) { error = "Not on the home Wi-Fi"; return false; }
+    if (!networkLock_) { error = "Update service unavailable"; return false; }
+    xSemaphoreTake(networkLock_, portMAX_DELAY);
+    bool ok = false;
+    {
+      WiFiClientSecure client;
+      client.setCACertBundle(otaCaBundleStart, otaCaBundleEnd - otaCaBundleStart);
+      client.setTimeout(15000);
+      client.setHandshakeTimeout(15);
+      HTTPClient http;
+      http.setTimeout(15000);
+      http.setConnectTimeout(15000);
+      http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+      if (!http.begin(client, url)) error = "Could not open the update file link";
+      else {
+        const int code = http.GET();
+        const int size = http.getSize();
+        if (code != HTTP_CODE_OK) error = "Update file: HTTP " + String(code);
+        else if (size > 2048) error = "Update file too big";
+        else {
+          out = http.getString();
+          if (out.length() > 2048) out = out.substring(0, 2048);
+          ok = true;
+        }
+        http.end();
+      }
+    }
+    xSemaphoreGive(networkLock_);
+    return ok;
+  }
+
   bool start(String url, String &error) {
     url.trim();
     if (!stateLock_ || !networkLock_) { error = "Update service unavailable"; return false; }

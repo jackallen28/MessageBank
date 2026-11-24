@@ -33,6 +33,8 @@ address, and the box shows it on an e-paper screen with a spinning LED ring and 
   - **Buzz:** on or off.
   - **Bedtime:** quiet time with no lights or buzz for new messages, from and until a time you
     set (in 30-minute steps).
+  - **Automatic updates:** on or off, and **Check for updates** to look now. With it on, the box
+    checks this repo once a day and installs a newer version while nobody is using it.
   - **Change Wi-Fi:** opens the setup Wi-Fi (`MessageBox-Setup`) to choose another network.
   - **Shut down:** the box sleeps (the screen says so); **turn the knob to wake it**. It doesn't
     check Gmail while asleep.
@@ -122,12 +124,12 @@ Things to know:
 
 **Ready-made images** are in [`firmware/`](firmware/):
 
-- **Fresh USB install at 0x0:** flash `MessageBox-main-v14-USB-installer.bin` with Espressif's browser
+- **Fresh USB install at 0x0:** flash `MessageBox-main-v15-USB-installer.bin` with Espressif's browser
   flasher (DIO, 40 MHz, 4 MB). This erases settings and messages.
 - **From the device page's Firmware update:** paste the raw GitHub link to
-  `MessageBox-main-v14-OTA.bin`. This keeps settings and messages.
+  `MessageBox-main-v15-OTA.bin`. This keeps settings and messages.
 - **USB recovery at 0xe000:** for a box with the standard MessageBox OTA partition layout,
-  `MessageBox-main-v14-USB-recovery.bin` installs v14 and keeps settings and messages.
+  `MessageBox-main-v15-USB-recovery.bin` installs v15 and keeps settings and messages.
 
 [`firmware/README.md`](firmware/README.md) has the steps, a test checklist and the review of v9.
 

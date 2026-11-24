@@ -1,0 +1,4 @@
+# The newest MessageBox firmware. Boxes with "Automatic updates" on read this once a day and
+# install a newer version while idle. Update both lines when publishing a new OTA image.
+version=15
+file=MessageBox-main-v15-OTA.bin

@@ -17,7 +17,7 @@ const int PIN_LEDS = 2;       // ring DIN
 const int PIN_VIBE = 20;      // motor module IN
 
 const int NUM_LEDS = 12;
-const char *const FIRMWARE_VERSION = "MessageBox-main-v14";
+const char *const FIRMWARE_VERSION = "MessageBox-main-v15";
 const char *const AP_SSID = "MessageBox-Setup";
 const uint32_t MENU_HOLD_MS = 20000;   // hold the knob this long for the settings screen
 const uint32_t DELETE_HOLD_MS = 2000;  // while reading: hold this long to delete the message
@@ -30,7 +30,13 @@ const int MAX_MSGS = 40;
 
 // Arduino generates sketch prototypes before .ino-local type declarations.
 enum Ui : uint8_t { UI_IDLE, UI_ENVELOPE, UI_READ, UI_REACT, UI_HAPPY, UI_SETUP, UI_ARRIVE, UI_NOMSG,
-               UI_CAROUSEL, UI_SENT, UI_MENU, UI_SLEEP };
+               UI_CAROUSEL, UI_SENT, UI_MENU, UI_SLEEP, UI_UPDATE };
+
+// The firmware's number: 15 for "MessageBox-main-v15".
+inline int firmwareNumber(const char *version) {
+  const char *v = strrchr(version, 'v');
+  return v ? atoi(v + 1) : 0;
+}
 
 // ---------------------------------------------------------------- settings
 
@@ -74,6 +80,9 @@ struct Settings {
   uint16_t bedFrom = 22 * 60, bedTo = 7 * 60;
   // nicknames: one "address=Name" per line
   String nicknames;
+  // updates: the box checks this file once a day and installs a newer version while it's idle
+  bool autoUpdate = true;
+  String updateUrl = "https://raw.githubusercontent.com/jackallen28/MessageBank/main/firmware/latest.txt";
 } cfg;
 
 Preferences prefs;
@@ -125,6 +134,8 @@ void loadSettings() {
   cfg.bedFrom = prefs.getUShort("bedfrom", cfg.bedFrom) % 1440;
   cfg.bedTo = prefs.getUShort("bedto", cfg.bedTo) % 1440;
   cfg.nicknames = prefs.getString("nicks", cfg.nicknames);
+  cfg.autoUpdate = prefs.getBool("autoupd", cfg.autoUpdate);
+  cfg.updateUrl = prefs.getString("updurl", cfg.updateUrl);
   cfg.brightness = prefs.getUChar("bright", cfg.brightness);
   cfg.knobHaptics = prefs.getBool("hknob", cfg.knobHaptics);
   cfg.tickPower = prefs.getUChar("hpow", cfg.tickPower);
@@ -171,6 +182,8 @@ void saveSettings() {
   prefs.putUShort("bedfrom", cfg.bedFrom);
   prefs.putUShort("bedto", cfg.bedTo);
   prefs.putString("nicks", cfg.nicknames);
+  prefs.putBool("autoupd", cfg.autoUpdate);
+  prefs.putString("updurl", cfg.updateUrl);
   prefs.putUChar("bright", cfg.brightness);
   prefs.putBool("hknob", cfg.knobHaptics);
   prefs.putUChar("hpow", cfg.tickPower);

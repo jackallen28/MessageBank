@@ -63,11 +63,13 @@ int main(int argc, char **argv) {
     View se; se.scr = SCR_SENT; se.from = "Alex"; se.reaction = 0; se.replyQueued = true;
     drawView(se); save(dir, ("e_sent" + sfx).c_str());
     View m; m.scr = SCR_MENU; m.menuSel = 3; m.menuEditing = true;
-    m.menu = { {"Lights", "On"}, {"Buzz", "On"}, {"Bedtime", "On"}, {"Quiet from", "22:00"}, {"Quiet until", "07:00"},
+    m.menu = { {"Lights", "On"}, {"Buzz", "On"}, {"Bedtime", "On"}, {"Quiet from", "22:00"}, {"Quiet until", "07:00"}, {"Automatic updates", "On"}, {"Check for updates", "v15"},
                {"Change Wi-Fi", ""}, {"Shut down", ""}, {"Exit", ""} };
     drawView(m); save(dir, ("f_menu" + sfx).c_str());
     View sl; sl.scr = SCR_SLEEP;
     drawView(sl); save(dir, ("g_sleep" + sfx).c_str());
+    View up; up.scr = SCR_UPDATE; up.title = "Updating to v16"; up.text = "Downloading. Don't unplug the box."; up.pos = 40;
+    drawView(up); save(dir, ("h_update" + sfx).c_str());
     View en; en.scr = SCR_ENVELOPE; en.count = 2;
     drawView(en); save(dir, ("1_envelope" + sfx).c_str());
   }  return 0;
